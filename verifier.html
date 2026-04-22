@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Verifier — Garuda Games</title>
+    <meta name="robots" content="noindex" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/styles.css" />
+    <script src="js/api-client.js"></script>
+    <script src="js/site-settings.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/nav-session.js"></script>
+  </head>
+  <body>
+    <div class="noise" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <a class="brand" href="index.html#top">
+        <img
+          src="images/Garuda Transparent BG.png"
+          alt=""
+          class="brand__mark"
+          width="48"
+          height="48"
+        />
+        <span class="brand__text">Garuda Games</span>
+      </a>
+      <button
+        type="button"
+        class="nav-toggle"
+        aria-expanded="false"
+        aria-controls="site-nav"
+      >
+        <span class="nav-toggle__bar"></span>
+        <span class="nav-toggle__bar"></span>
+        <span class="nav-toggle__bar"></span>
+        <span class="visually-hidden">Menu</span>
+      </button>
+      <nav id="site-nav" class="site-nav" aria-label="Primary">
+        <a href="index.html#top">Home</a>
+        <a href="news.html" id="nav-news">
+          News
+          <span id="nav-news-badge" class="nav-news__badge" hidden>NEW</span>
+        </a>
+        <a href="dashboard.html" id="nav-dashboard" hidden>Dashboard</a>
+        <a href="inbox.html" id="nav-inbox" hidden>
+          Inbox
+          <span id="nav-inbox-badge" class="nav-inbox__badge" hidden>0</span>
+        </a>
+        <a href="verifier.html" aria-current="page">Verifier</a>
+        <a href="admin.html" id="nav-admin-verif" hidden>Admin</a>
+        <a href="leaderboard.html">Leaderboard</a>
+        <a href="portfolio.html">Portfolio</a>
+        <button type="button" class="nav-logout" id="nav-logout">
+          Log out
+        </button>
+      </nav>
+    </header>
+
+    <main class="dash-page verif-page">
+      <div class="dash-page__inner">
+        <header class="dash-header">
+          <div class="dash-header__intro">
+            <h1 class="dash-header__title">Verifier dashboard</h1>
+            <p class="dash-header__welcome">
+              Approve or reject digital ID flags, achievement, and JLAP
+              submissions. Rank points are awarded only when you verify an
+              achievement.
+            </p>
+          </div>
+          <nav class="dash-quick-actions" aria-label="Verifier quick actions">
+            <a class="btn btn--ghost btn--sm" href="#vq-ach">Achievements</a>
+            <a class="btn btn--ghost btn--sm" href="#vq-idflags">ID flags</a>
+            <a class="btn btn--ghost btn--sm" href="#vq-jlap">JLAP</a>
+          </nav>
+        </header>
+
+        <section class="dash-card dash-card--news" aria-labelledby="vq-news">
+          <div class="dash-inbox__header">
+            <h2 id="vq-news" class="dash-card__title">Latest news</h2>
+            <a class="btn btn--ghost btn--sm" href="news.html">
+              See all updates
+            </a>
+          </div>
+          <p class="dash-card__hint">
+            Club announcements, new features, and fixes — in plain English.
+          </p>
+          <div data-news-widget data-limit="3"></div>
+        </section>
+
+        <section class="dash-card dash-overview" aria-labelledby="vq-o">
+          <h2 id="vq-o" class="dash-card__title">Overview</h2>
+          <div class="stats-grid">
+            <article class="stats-card">
+              <span class="stats-card__label">Pending achievements</span>
+              <strong class="stats-card__value" id="vstat-pend-ach">—</strong>
+              <a class="stats-card__sub stats-card__link" href="#vq-ach">Review queue →</a>
+            </article>
+            <article class="stats-card">
+              <span class="stats-card__label">Pending ID flags</span>
+              <strong class="stats-card__value" id="vstat-pend-idflags">—</strong>
+              <a class="stats-card__sub stats-card__link" href="#vq-idflags">Review queue →</a>
+            </article>
+            <article class="stats-card">
+              <span class="stats-card__label">Pending JLAP</span>
+              <strong class="stats-card__value" id="vstat-pend-jlap">—</strong>
+              <a class="stats-card__sub stats-card__link" href="#vq-jlap">Review queue →</a>
+            </article>
+            <article class="stats-card">
+              <span class="stats-card__label">Your verifications</span>
+              <strong class="stats-card__value" id="vstat-mine-total">—</strong>
+              <span class="stats-card__sub" id="vstat-mine-breakdown">&nbsp;</span>
+            </article>
+            <article class="stats-card stats-card--warn">
+              <span class="stats-card__label">Verified · missing date</span>
+              <strong class="stats-card__value" id="vstat-missing-date">—</strong>
+              <a
+                class="stats-card__sub stats-card__link"
+                href="#vq-ach"
+                id="vstat-missing-date-link"
+              >Backfill queue →</a>
+            </article>
+          </div>
+
+          <div class="overview-block">
+            <h3 class="admin-subtitle">Recently verified by you</h3>
+            <div class="dash-table-wrap">
+              <table class="dash-table">
+                <thead>
+                  <tr>
+                    <th>When</th>
+                    <th>Type</th>
+                    <th>Member</th>
+                    <th>Detail</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="vq-recent-tbody">
+                  <tr><td colspan="5" class="dash-table-empty">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="dash-card" aria-labelledby="vq-ach">
+          <h2 id="vq-ach" class="dash-card__title">Achievement submissions</h2>
+          <div class="verif-tabs" id="verif-ach-tabs" role="tablist">
+            <button type="button" class="chip chip--active" data-status="pending" role="tab" aria-selected="true">Pending</button>
+            <button type="button" class="chip" data-status="verified" role="tab" aria-selected="false">Verified</button>
+            <button type="button" class="chip" data-status="rejected" role="tab" aria-selected="false">Rejected</button>
+            <button
+              type="button"
+              class="chip chip--warn"
+              data-status="missing-date"
+              role="tab"
+              aria-selected="false"
+              title="Verified achievements that still need an event date filled in so their points bucket into the correct season"
+            >
+              Missing dates <span id="verif-missing-date-count" class="chip__count" hidden>0</span>
+            </button>
+          </div>
+          <div class="dash-table-wrap">
+            <table class="dash-table">
+              <thead>
+                <tr>
+                  <th>Member</th>
+                  <th>Event</th>
+                  <th>Date</th>
+                  <th>Rank</th>
+                  <th>Pts</th>
+                  <th>Challonge</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="verif-ach-tbody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="dash-card" aria-labelledby="vq-idflags">
+          <h2 id="vq-idflags" class="dash-card__title">Digital ID flags</h2>
+          <p class="dash-card__hint">
+            Approve to update the member’s digital ID card; reject leaves their
+            last approved flags unchanged.
+          </p>
+          <div class="dash-table-wrap">
+            <table class="dash-table">
+              <thead>
+                <tr>
+                  <th>Member</th>
+                  <th>Requested</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="verif-idflags-tbody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="dash-card" aria-labelledby="vq-jlap">
+          <h2 id="vq-jlap" class="dash-card__title">JLAP submissions</h2>
+          <div class="verif-tabs" id="verif-jlap-tabs" role="tablist">
+            <button type="button" class="chip chip--active" data-status="pending" role="tab" aria-selected="true">Pending</button>
+            <button type="button" class="chip" data-status="verified" role="tab" aria-selected="false">Verified</button>
+            <button type="button" class="chip" data-status="rejected" role="tab" aria-selected="false">Rejected</button>
+          </div>
+          <div class="dash-table-wrap">
+            <table class="dash-table">
+              <thead>
+                <tr>
+                  <th>Member</th>
+                  <th>Certificate</th>
+                  <th>QR</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="verif-jlap-tbody"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="site-footer__inner">
+        <span class="site-footer__brand">© Garuda Games</span>
+        <span class="site-footer__note">Verifier queue · Garuda Games API</span>
+      </div>
+    </footer>
+
+    <div
+      id="verif-lightbox"
+      class="verif-lightbox"
+      hidden
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="verif-lightbox-title"
+    >
+      <div class="verif-lightbox__backdrop" data-lightbox-close></div>
+      <div class="verif-lightbox__frame" role="document">
+        <header class="verif-lightbox__bar">
+          <h2 id="verif-lightbox-title" class="verif-lightbox__title">Preview</h2>
+          <div class="verif-lightbox__actions">
+            <a
+              id="verif-lightbox-open"
+              class="btn btn--ghost btn--sm"
+              href="#"
+              target="_blank"
+              rel="noopener"
+            >Open in new tab</a>
+            <button
+              type="button"
+              class="btn btn--ghost btn--sm"
+              data-lightbox-close
+              aria-label="Close preview"
+            >Close</button>
+          </div>
+        </header>
+        <div class="verif-lightbox__body">
+          <img id="verif-lightbox-img" alt="" />
+        </div>
+      </div>
+    </div>
+
+    <script src="js/main.js"></script>
+    <script src="js/pro-flags.js"></script>
+    <script src="js/news-widget.js"></script>
+    <script src="js/verifier-app.js"></script>
+  </body>
+</html>

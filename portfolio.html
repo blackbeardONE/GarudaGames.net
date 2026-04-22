@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Blader Portfolio — Garuda Games</title>
+    <meta
+      name="description"
+      content="Full verified career record for a Garuda Games blader — every tournament, placement, and points earned."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/styles.css" />
+    <script src="js/api-client.js"></script>
+    <script src="js/site-settings.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/nav-session.js"></script>
+  </head>
+  <body>
+    <div class="noise" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <a class="brand" href="index.html#top">
+        <img
+          src="images/Garuda Transparent BG.png"
+          alt=""
+          class="brand__mark"
+          width="48"
+          height="48"
+        />
+        <span class="brand__text">Garuda Games</span>
+      </a>
+      <button
+        type="button"
+        class="nav-toggle"
+        aria-expanded="false"
+        aria-controls="site-nav"
+      >
+        <span class="nav-toggle__bar"></span>
+        <span class="nav-toggle__bar"></span>
+        <span class="nav-toggle__bar"></span>
+        <span class="visually-hidden">Menu</span>
+      </button>
+      <nav id="site-nav" class="site-nav" aria-label="Primary">
+        <a href="index.html#top">Home</a>
+        <a href="news.html" id="nav-news">
+          News
+          <span id="nav-news-badge" class="nav-news__badge" hidden>NEW</span>
+        </a>
+        <a href="members.html">Verify member</a>
+        <a href="leaderboard.html">Leaderboard</a>
+        <a href="portfolio.html" aria-current="page">Portfolio</a>
+        <a href="signup.html">Sign up</a>
+        <a href="login.html">Member login</a>
+        <a href="dashboard.html" id="nav-dashboard" hidden>Dashboard</a>
+        <a href="inbox.html" id="nav-inbox" hidden>
+          Inbox
+          <span id="nav-inbox-badge" class="nav-inbox__badge" hidden>0</span>
+        </a>
+        <a href="verifier.html" id="nav-verifier" hidden>Verifier</a>
+        <a href="admin.html" id="nav-admin" hidden>Admin</a>
+        <button type="button" class="nav-logout" id="nav-logout" hidden>
+          Log out
+        </button>
+      </nav>
+    </header>
+
+    <main class="portfolio-page" id="top">
+      <div class="portfolio-page__inner">
+        <form class="portfolio-search" id="portfolio-search" role="search">
+          <label class="portfolio-search__label" for="portfolio-query">
+            <span class="visually-hidden">Find a blader</span>
+            <input
+              type="search"
+              id="portfolio-query"
+              placeholder="Find a blader by IGN or username"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </label>
+          <button type="submit" class="btn btn--primary">View portfolio</button>
+        </form>
+
+        <p id="portfolio-status" class="portfolio-status" aria-live="polite"></p>
+
+        <section
+          id="portfolio-content"
+          class="portfolio-content"
+          hidden
+          aria-labelledby="portfolio-heading"
+        >
+          <header class="portfolio-hero">
+            <div class="portfolio-hero__media">
+              <img
+                id="portfolio-photo"
+                class="portfolio-hero__photo"
+                src="images/Garuda Logo.jpg"
+                alt=""
+                width="220"
+                height="220"
+              />
+            </div>
+            <div class="portfolio-hero__body">
+              <div class="portfolio-hero__badges" id="portfolio-badges"></div>
+              <h1 id="portfolio-heading" class="portfolio-hero__name">—</h1>
+              <p class="portfolio-hero__squad" id="portfolio-squad">—</p>
+              <p class="portfolio-hero__games" id="portfolio-games"></p>
+              <p class="portfolio-hero__since" id="portfolio-since"></p>
+            </div>
+          </header>
+
+          <section class="portfolio-stats" aria-label="Career summary">
+            <div class="portfolio-stat portfolio-stat--active">
+              <span
+                class="portfolio-stat__value"
+                id="portfolio-active-points"
+              >0</span>
+              <span class="portfolio-stat__label">
+                Active season
+                <span
+                  id="portfolio-active-season"
+                  class="portfolio-stat__meta"
+                ></span>
+              </span>
+            </div>
+            <div class="portfolio-stat">
+              <span class="portfolio-stat__value" id="portfolio-points">0</span>
+              <span class="portfolio-stat__label">Lifetime points</span>
+            </div>
+            <div class="portfolio-stat">
+              <span class="portfolio-stat__value" id="portfolio-events">0</span>
+              <span class="portfolio-stat__label">Verified events</span>
+            </div>
+            <div class="portfolio-stat">
+              <span class="portfolio-stat__value" id="portfolio-champs">0</span>
+              <span class="portfolio-stat__label">Championships</span>
+            </div>
+            <div class="portfolio-stat">
+              <span class="portfolio-stat__value" id="portfolio-podiums">0</span>
+              <span class="portfolio-stat__label">Podium finishes</span>
+            </div>
+          </section>
+
+          <section
+            class="portfolio-pergame"
+            id="portfolio-pergame"
+            aria-label="Per-game breakdown"
+          ></section>
+
+          <section class="portfolio-filters" aria-label="Achievement filters">
+            <div
+              class="portfolio-chips"
+              id="portfolio-game-chips"
+              role="tablist"
+              aria-label="Filter by game"
+            >
+              <button
+                type="button"
+                class="chip chip--active"
+                data-game="all"
+                role="tab"
+                aria-selected="true"
+              >
+                All games
+              </button>
+            </div>
+            <div
+              class="portfolio-chips"
+              id="portfolio-season-chips"
+              role="tablist"
+              aria-label="Filter by season"
+            >
+              <button
+                type="button"
+                class="chip chip--active"
+                data-season="all"
+                role="tab"
+                aria-selected="true"
+              >
+                All seasons
+              </button>
+            </div>
+          </section>
+
+          <section class="portfolio-table-wrap" aria-labelledby="portfolio-ach-heading">
+            <h2 id="portfolio-ach-heading" class="portfolio-section-title">
+              Career record
+            </h2>
+            <p class="portfolio-note">
+              Only verified achievements are shown. Points are tallied from the
+              date each event actually took place, so a result submitted late
+              still counts for the season in which the tournament was held.
+            </p>
+            <div class="portfolio-table-scroll">
+              <table class="portfolio-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Date</th>
+                    <th scope="col">Event</th>
+                    <th scope="col">Game</th>
+                    <th scope="col">Finish</th>
+                    <th scope="col">Players</th>
+                    <th scope="col">Points</th>
+                    <th scope="col">Season</th>
+                    <th scope="col">Bracket</th>
+                  </tr>
+                </thead>
+                <tbody id="portfolio-tbody"></tbody>
+              </table>
+            </div>
+            <p
+              id="portfolio-empty"
+              class="portfolio-empty"
+              hidden
+            >
+              No verified achievements match the current filters yet.
+            </p>
+          </section>
+        </section>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="site-footer__inner">
+        <span class="site-footer__brand">© Garuda Games</span>
+        <span class="site-footer__note">Blader portfolios · verified results only</span>
+      </div>
+    </footer>
+
+    <script src="js/main.js"></script>
+    <script src="js/pro-flags.js"></script>
+    <script src="js/portfolio-app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Inbox — Garuda Games</title>
+    <meta name="robots" content="noindex" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/styles.css" />
+    <script src="js/api-client.js"></script>
+    <script src="js/site-settings.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/nav-session.js"></script>
+  </head>
+  <body>
+    <div class="noise" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <a class="brand" href="index.html#top">
+        <img
+          src="images/Garuda Transparent BG.png"
+          alt=""
+          class="brand__mark"
+          width="48"
+          height="48"
+        />
+        <span class="brand__text">Garuda Games</span>
+      </a>
+      <button
+        type="button"
+        class="nav-toggle"
+        aria-expanded="false"
+        aria-controls="site-nav"
+      >
+        <span class="nav-toggle__bar"></span>
+        <span class="nav-toggle__bar"></span>
+        <span class="nav-toggle__bar"></span>
+        <span class="visually-hidden">Menu</span>
+      </button>
+      <nav id="site-nav" class="site-nav" aria-label="Primary">
+        <a href="index.html#top">Home</a>
+        <a href="news.html" id="nav-news">
+          News
+          <span id="nav-news-badge" class="nav-news__badge" hidden>NEW</span>
+        </a>
+        <a href="signup.html">Sign up</a>
+        <a href="login.html">Member login</a>
+        <a href="dashboard.html" id="nav-dashboard" hidden>Dashboard</a>
+        <a href="inbox.html" id="nav-inbox" hidden aria-current="page">
+          Inbox
+          <span id="nav-inbox-badge" class="nav-inbox__badge" hidden>0</span>
+        </a>
+        <a href="verifier.html" id="nav-verifier" hidden>Verifier</a>
+        <a href="admin.html" id="nav-admin" hidden>Admin</a>
+        <a href="leaderboard.html">Leaderboard</a>
+        <a href="portfolio.html">Portfolio</a>
+        <a href="members.html">Verify member</a>
+        <button type="button" class="nav-logout" id="nav-logout">
+          Log out
+        </button>
+      </nav>
+    </header>
+
+    <main class="dash-page dash-page--full" id="top">
+      <div class="dash-page__inner">
+        <header class="dash-header">
+          <div class="dash-header__intro">
+            <h1 class="dash-header__title">Inbox</h1>
+            <p class="dash-header__welcome">
+              Notifications from verifiers and admins about your submissions.
+            </p>
+          </div>
+          <a class="btn btn--ghost dash-header__logout" href="dashboard.html">
+            Back to dashboard
+          </a>
+        </header>
+
+        <div class="dash-grid dash-grid--wide">
+          <section
+            class="dash-card dash-card--span2"
+            aria-labelledby="inbox-heading"
+          >
+            <div class="dash-inbox__header">
+              <h2 id="inbox-heading" class="dash-card__title">
+                Notifications
+                <span class="dash-inbox__badge" id="dash-inbox-badge" hidden
+                  >0</span
+                >
+              </h2>
+              <button
+                type="button"
+                class="btn btn--ghost btn--sm"
+                id="dash-inbox-mark-all"
+                hidden
+              >
+                Mark all as read
+              </button>
+            </div>
+            <p class="dash-card__hint">
+              Unread items are highlighted. Click an item to mark it read, or
+              use <em>Mark all as read</em> to clear the badge.
+            </p>
+            <ul id="dash-inbox-list" class="dash-inbox"></ul>
+            <p id="dash-inbox-empty" class="dash-inbox__empty" hidden>
+              No notifications yet.
+            </p>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="site-footer__inner">
+        <span class="site-footer__brand">© Garuda Games</span>
+        <span class="site-footer__note">Member inbox · Garuda Games API</span>
+      </div>
+    </footer>
+
+    <script src="js/main.js"></script>
+    <script src="js/inbox-app.js"></script>
+  </body>
+</html>

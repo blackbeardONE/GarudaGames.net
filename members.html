@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Member verification — Garuda Games</title>
+    <meta
+      name="description"
+      content="Verify if an IGN or full name is on the Garuda Games roster."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/styles.css" />
+    <script src="js/api-client.js"></script>
+    <script src="js/site-settings.js"></script>
+    <script src="js/auth.js"></script>
+  </head>
+  <body>
+    <div class="noise" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <a class="brand" href="index.html#top">
+        <img
+          src="images/Garuda Transparent BG.png"
+          alt=""
+          class="brand__mark"
+          width="48"
+          height="48"
+        />
+        <span class="brand__text">Garuda Games</span>
+      </a>
+      <button
+        type="button"
+        class="nav-toggle"
+        aria-expanded="false"
+        aria-controls="site-nav"
+      >
+        <span class="nav-toggle__bar"></span>
+        <span class="nav-toggle__bar"></span>
+        <span class="nav-toggle__bar"></span>
+        <span class="visually-hidden">Menu</span>
+      </button>
+      <nav id="site-nav" class="site-nav" aria-label="Primary">
+        <div class="nav-dropdown">
+          <button
+            type="button"
+            class="nav-dropdown__btn"
+            id="nav-games-btn"
+            aria-expanded="false"
+            aria-haspopup="true"
+            aria-controls="nav-games-panel"
+          >
+            Games we play
+          </button>
+          <div
+            id="nav-games-panel"
+            class="nav-dropdown__panel"
+            role="menu"
+            aria-labelledby="nav-games-btn"
+            hidden
+          >
+            <a role="menuitem" href="index.html#game-beyblade">Beyblade X</a>
+            <a role="menuitem" href="index.html#game-mobile-legends"
+              >Mobile Legends</a
+            >
+            <a role="menuitem" href="index.html#game-honor-of-kings"
+              >Honor of Kings</a
+            >
+            <a role="menuitem" href="index.html#game-cod-mobile"
+              >Call of Duty: Mobile</a
+            >
+            <a role="menuitem" href="index.html#game-dota-2">Dota 2</a>
+            <a role="menuitem" href="index.html#game-tekken">Tekken</a>
+            <a role="menuitem" href="index.html#game-valorant">Valorant</a>
+          </div>
+        </div>
+        <a href="news.html" id="nav-news">
+          News
+          <span id="nav-news-badge" class="nav-news__badge" hidden>NEW</span>
+        </a>
+        <a href="members.html" aria-current="page">Verify member</a>
+        <a href="leaderboard.html">Leaderboard</a>
+        <a href="portfolio.html">Portfolio</a>
+        <a href="signup.html">Sign up</a>
+        <a href="login.html">Member login</a>
+        <a href="dashboard.html" id="nav-dashboard" hidden>Dashboard</a>
+        <a href="inbox.html" id="nav-inbox" hidden>
+          Inbox
+          <span id="nav-inbox-badge" class="nav-inbox__badge" hidden>0</span>
+        </a>
+        <a href="verifier.html" id="nav-verifier" hidden>Verifier</a>
+        <a href="admin.html" id="nav-admin" hidden>Admin</a>
+        <a href="index.html#about">About</a>
+        <a href="index.html#founder">Founder</a>
+        <a href="index.html#supporters">Supporters</a>
+        <a href="index.html#events">Events</a>
+        <a
+          class="nav-discord"
+          href="https://discord.gg/dE9PWvmSYT"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Discord</a
+        >
+      </nav>
+    </header>
+
+    <main class="verify-page" id="top">
+      <div class="verify-page__inner">
+        <h1 class="verify-page__title">Member verification</h1>
+        <p class="verify-page__lead">
+          Enter an <strong>in-game name (IGN)</strong> or
+          <strong>full name</strong> as on a member account
+          <strong>registered on Garuda Games</strong>. We show their profile
+          photo and games straight from the club roster.
+        </p>
+
+        <form id="verify-form" class="verify-form" novalidate>
+          <label for="verify-query">IGN or full name</label>
+          <input
+            type="text"
+            id="verify-query"
+            name="q"
+            autocomplete="name"
+            placeholder="IGN or full name"
+            required
+          />
+          <button type="submit" class="btn btn--primary">Check roster</button>
+        </form>
+
+        <div id="verify-outcome" class="verify-outcome" aria-live="polite"></div>
+
+        <p class="verify-page__lead verify-page__discord">
+          Hang with the club on Discord:
+          <a
+            href="https://discord.gg/dE9PWvmSYT"
+            target="_blank"
+            rel="noopener noreferrer"
+            >discord.gg/dE9PWvmSYT</a
+          >
+        </p>
+        <a class="btn btn--discord" href="https://discord.gg/dE9PWvmSYT" target="_blank" rel="noopener noreferrer"
+          >Join our Discord</a
+        >
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="site-footer__inner">
+        <span class="site-footer__brand">© Garuda Games</span>
+        <ul class="site-footer__links">
+          <li>
+            <a
+              class="site-footer__fb"
+              href="https://www.facebook.com/profile.php?id=61580826341254"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Facebook</a
+            >
+          </li>
+          <li>
+            <a
+              href="https://discord.gg/dE9PWvmSYT"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Discord</a
+            >
+          </li>
+          <li><a href="index.html">Home</a></li>
+        </ul>
+        <span class="site-footer__note"
+          >Gear Sports &amp; E-Sports club · Partners: Taguig All Stars &amp; Sylphy Academy</span
+        >
+      </div>
+    </footer>
+
+    <script src="js/nav-session.js"></script>
+    <script src="js/main.js"></script>
+    <script src="js/pro-flags.js"></script>
+    <script src="js/members.js"></script>
+  </body>
+</html>

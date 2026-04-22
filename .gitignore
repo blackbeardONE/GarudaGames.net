@@ -1,0 +1,42 @@
+# Node
+node_modules/
+npm-debug.log*
+.npm/
+
+# Local DB / data
+data/
+*.sqlite
+*.sqlite-journal
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Logs + runtime
+*.log
+boot.err
+boot.out
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Build / deploy artifacts
+deploy.tar.gz
+*.tar.gz
+deploy-stage/
+
+# Secrets — never commit any of these
+.env
+.env.*
+secrets/
+vps.txt
+credentials.json
+*.pem
+*.key
+*.pfx
+id_rsa
+id_ed25519

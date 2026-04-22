@@ -1,0 +1,195 @@
+Garuda Games Proprietary License
+Copyright (c) 2026 Garuda Games. All rights reserved.
+
+================================================================
+                          TL;DR (not legally binding)
+================================================================
+
+This source is public for READING, not for USING.
+
+You may not:
+  - run this software, or any derivative, on any server you operate
+  - copy, fork-and-deploy, or redistribute this software
+  - use this software in any product, service, or venture
+  - use any part of this software for monetary gain of any kind
+
+without first obtaining a signed, written commercial license from the
+copyright holder. If you want to do any of the above, contact us. We
+will probably say yes for good-faith non-commercial use, and we have
+a separate commercial agreement for anything that makes money.
+
+================================================================
+                          FULL TERMS
+================================================================
+
+1. Definitions
+
+   "Software" means the source code, object code, documentation,
+   configuration, assets (including images and CSS), and any other
+   files made available in the repository containing this LICENSE
+   file, together with any modifications or derivative works thereof.
+
+   "Copyright Holder" means Garuda Games and its authorized
+   representatives.
+
+   "You" means the individual or legal entity accessing, reading,
+   copying, or otherwise interacting with the Software.
+
+   "Commercial Use" means any use of the Software, in whole or in
+   part, directly or indirectly, in connection with any activity
+   intended for, or resulting in, monetary compensation, advertising
+   revenue, subscription revenue, sponsorship revenue, venture
+   funding, professional services billing, the sale or licensing of
+   products or services, or any other commercial advantage or
+   private monetary gain. Commercial Use expressly includes, without
+   limitation: hosting the Software as a service (whether paid or
+   free-to-user but supported by advertising, sponsorship, data
+   collection, or upsell to paid tiers); bundling the Software with
+   any paid offering; using the Software in the internal operations
+   of a for-profit entity; and training, fine-tuning, or evaluating
+   machine-learning models on the Software where the resulting
+   models are offered for commercial purposes.
+
+2. Grant of rights (narrow)
+
+   The Copyright Holder grants You a non-exclusive, non-transferable,
+   revocable permission, solely for the purposes of personal study,
+   code review, security research, and interoperability analysis,
+   to:
+
+       (a) view the Software;
+       (b) make a local copy of the Software on a device under Your
+           exclusive control, for the purposes listed above; and
+       (c) make quotations from the Software, not exceeding what is
+           reasonably necessary, in discussions, teaching materials,
+           bug reports, or academic publications, provided that such
+           quotations carry a prominent attribution to the
+           Copyright Holder and a link or reference to this LICENSE.
+
+3. Restrictions (broad)
+
+   Except with the prior, written, case-by-case permission of the
+   Copyright Holder, You may NOT:
+
+       (a) use the Software, or any portion of it, to operate any
+           service, product, website, application, bot, worker,
+           scheduled job, or other running program, whether hosted
+           on infrastructure You control or on third-party
+           infrastructure;
+       (b) distribute, sublicense, publish, rehost, or otherwise
+           make available copies of the Software, in source or
+           binary form, in whole or in part;
+       (c) modify, adapt, translate, or create derivative works of
+           the Software;
+       (d) use the Software for any Commercial Use;
+       (e) remove, obscure, or alter any copyright, trademark, or
+           other proprietary notices in the Software;
+       (f) use the name "Garuda Games", the Garuda Games logo, or
+           any confusingly similar mark, in connection with any
+           deployment, fork, or derivative, in a manner that would
+           suggest endorsement or affiliation with the Copyright
+           Holder.
+
+4. Commercial licensing
+
+   Commercial Use requires a separate, executed commercial license
+   from the Copyright Holder. To inquire about Commercial Use,
+   contact the Garuda Games team via the official project page at
+   https://garudagames.net or via the GitHub account under which
+   this repository is published. Commercial licenses are issued on
+   a case-by-case basis and may carry terms including, without
+   limitation, fees, attribution, volume limits, feature
+   restrictions, and periodic audits.
+
+5. Attribution in permitted quotations
+
+   Where this LICENSE permits You to quote or reproduce small
+   portions of the Software (for example, in a code review, a
+   security advisory, or teaching material), You must include, in
+   the same place where the quotation appears, a notice
+   substantially in the following form:
+
+       "Source: Garuda Games (https://garudagames.net), used with
+        attribution under the Garuda Games Proprietary License."
+
+6. Termination
+
+   Any use, copying, modification, distribution, or exploitation of
+   the Software in violation of Section 3 automatically terminates
+   all rights granted to You under Section 2, immediately and
+   without notice. Upon termination, You must, within seven (7)
+   calendar days:
+
+       (a) cease all use of the Software;
+       (b) delete all copies of the Software in Your possession or
+           control;
+       (c) destroy all derivative works based on the Software; and
+       (d) upon request, certify in writing to the Copyright Holder
+           that You have complied with this Section.
+
+   Termination under this Section is without prejudice to any other
+   rights or remedies available to the Copyright Holder, including
+   at law or in equity.
+
+7. No trademark license
+
+   No rights to the trademarks, service marks, or trade names of
+   the Copyright Holder are granted by this LICENSE, whether by
+   implication, estoppel, or otherwise. This includes, without
+   limitation, the marks "Garuda Games", "Garuda Dark Phoenix",
+   "Garuda Harpy", "Garuda Tengu", "Garuda Vortex", "Garuda
+   Guardian", "Garuda Macaw", "Garuda Esports", and any associated
+   logos, badges, or chips.
+
+8. No warranty
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+   OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE,
+   NON-INFRINGEMENT, ACCURACY, OR CONTINUED AVAILABILITY. THE
+   ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE SOFTWARE
+   IS WITH YOU.
+
+9. Limitation of liability
+
+   TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT
+   SHALL THE COPYRIGHT HOLDER, ITS MAINTAINERS, CONTRIBUTORS, OR
+   AFFILIATES BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY,
+   WHETHER IN AN ACTION OF CONTRACT, TORT (INCLUDING NEGLIGENCE),
+   OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE
+   SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE, EVEN IF
+   ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+10. Governing law and venue
+
+    This LICENSE is governed by the laws of India, without regard
+    to its conflict-of-laws principles. Any dispute arising out of
+    or relating to this LICENSE shall be brought exclusively in the
+    courts located in the state in which the Copyright Holder
+    maintains its principal place of business, and You irrevocably
+    consent to the jurisdiction of those courts.
+
+11. Severability
+
+    If any provision of this LICENSE is held to be unenforceable or
+    invalid, that provision shall be reformed only to the extent
+    necessary to make it enforceable, and the remaining provisions
+    shall remain in full force and effect.
+
+12. Entire agreement; modifications
+
+    This LICENSE, together with any separate written commercial
+    license signed by the Copyright Holder, constitutes the entire
+    agreement between You and the Copyright Holder with respect to
+    the Software, and supersedes all prior agreements,
+    understandings, and communications, whether written or oral,
+    with respect to the Software. No modification of this LICENSE
+    is binding unless in writing and signed by the Copyright
+    Holder.
+
+================================================================
+
+By accessing, copying, reading, or otherwise interacting with the
+Software, You acknowledge that You have read this LICENSE, understand
+it, and agree to be bound by its terms. If You do not agree, you must
+not access, copy, read, or interact with the Software in any manner.

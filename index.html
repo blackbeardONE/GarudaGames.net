@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Garuda Games — Gear Sports &amp; E-Sports Club</title>
+    <meta
+      name="description"
+      content="Garuda Games is a Gear Sports and E-Sports club: Beyblade X, Mobile Legends, Honor of Kings, Call of Duty: Mobile, Dota 2. Partnered with Taguig All Stars and Sylphy Academy."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/styles.css" />
+  </head>
+  <body>
+    <div class="noise" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <a class="brand" href="index.html#top">
+        <img
+          id="site-brand-mark"
+          src="images/Garuda Transparent BG.png"
+          alt=""
+          class="brand__mark"
+          width="48"
+          height="48"
+        />
+        <span class="brand__text">Garuda Games</span>
+      </a>
+      <button
+        type="button"
+        class="nav-toggle"
+        aria-expanded="false"
+        aria-controls="site-nav"
+      >
+        <span class="nav-toggle__bar"></span>
+        <span class="nav-toggle__bar"></span>
+        <span class="nav-toggle__bar"></span>
+        <span class="visually-hidden">Menu</span>
+      </button>
+      <nav id="site-nav" class="site-nav" aria-label="Primary">
+        <div class="nav-dropdown">
+          <button
+            type="button"
+            class="nav-dropdown__btn"
+            id="nav-games-btn"
+            aria-expanded="false"
+            aria-haspopup="true"
+            aria-controls="nav-games-panel"
+          >
+            Games we play
+          </button>
+          <div
+            id="nav-games-panel"
+            class="nav-dropdown__panel"
+            role="menu"
+            aria-labelledby="nav-games-btn"
+            hidden
+          >
+            <a role="menuitem" href="#game-beyblade">Beyblade X</a>
+            <a role="menuitem" href="#game-mobile-legends">Mobile Legends</a>
+            <a role="menuitem" href="#game-honor-of-kings">Honor of Kings</a>
+            <a role="menuitem" href="#game-cod-mobile">Call of Duty: Mobile</a>
+            <a role="menuitem" href="#game-dota-2">Dota 2</a>
+            <a role="menuitem" href="#game-tekken">Tekken</a>
+            <a role="menuitem" href="#game-valorant">Valorant</a>
+          </div>
+        </div>
+        <a href="news.html" id="nav-news">
+          News
+          <span id="nav-news-badge" class="nav-news__badge" hidden>NEW</span>
+        </a>
+        <a href="members.html">Verify member</a>
+        <a href="leaderboard.html">Leaderboard</a>
+        <a href="portfolio.html">Portfolio</a>
+        <a href="signup.html">Sign up</a>
+        <a href="login.html">Member login</a>
+        <a href="dashboard.html" id="nav-dashboard" hidden>Dashboard</a>
+        <a href="inbox.html" id="nav-inbox" hidden>
+          Inbox
+          <span id="nav-inbox-badge" class="nav-inbox__badge" hidden>0</span>
+        </a>
+        <a href="verifier.html" id="nav-verifier-index" hidden>Verifier</a>
+        <a href="admin.html" id="nav-admin-index" hidden>Admin</a>
+        <a href="#about">About</a>
+        <a href="#founder">Founder</a>
+        <a href="#supporters">Supporters</a>
+        <a href="#events">Events</a>
+        <a
+          class="nav-discord"
+          href="https://discord.gg/dE9PWvmSYT"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Discord</a
+        >
+      </nav>
+    </header>
+
+    <main id="top">
+      <h1 class="visually-hidden">
+        Garuda Games — Gear Sports and E-Sports club
+      </h1>
+      <p id="site-header-tagline" class="site-header-tagline" hidden></p>
+      <section
+        class="hero hero-slider"
+        aria-roledescription="carousel"
+        aria-label="Games we play"
+      >
+        <h2 class="visually-hidden">Games we play</h2>
+        <div class="hero-slider__slides" id="game-slider-slides">
+          <article
+            class="game-slide is-active"
+            data-game="beyblade"
+            id="slide-beyblade"
+            aria-hidden="false"
+          >
+            <div class="game-slide__bg game-slide__bg--beyblade" aria-hidden="true"></div>
+            <div class="game-slide__grid">
+              <div class="game-slide__inner game-slide__col game-slide__col--text">
+                <p class="game-slide__eyebrow">Games we play</p>
+                <h2 class="game-slide__title">Beyblade X</h2>
+                <p class="game-slide__tagline">
+                  Phoenix energy on the stadium floor—reads, launch rhythm, and
+                  clutch finishes.
+                </p>
+              </div>
+              <div class="game-slide__col game-slide__col--visual">
+                <figure class="game-slide__art game-slide__art--bey">
+                  <img
+                    class="game-slide__art-img"
+                    src="images/Phoenix Wing Spirit bey.jpeg"
+                    width="420"
+                    height="420"
+                    alt="Phoenix Wing Beyblade X: metallic red and gold phoenix bit with aggressive blade ring"
+                    fetchpriority="high"
+                  />
+                  <figcaption class="game-slide__art-cap">
+                    Phoenix Wing · Garuda spirit, battle-ready
+                  </figcaption>
+                </figure>
+              </div>
+            </div>
+          </article>
+          <article
+            class="game-slide"
+            data-game="mobile-legends"
+            id="slide-mobile-legends"
+            aria-hidden="true"
+          >
+            <div class="game-slide__bg game-slide__bg--mlbb" aria-hidden="true"></div>
+            <div class="game-slide__grid">
+              <div class="game-slide__inner game-slide__col game-slide__col--text">
+                <p class="game-slide__eyebrow">Games we play</p>
+                <h2 class="game-slide__title">Mobile Legends</h2>
+                <p class="game-slide__tagline">
+                  Lane control, teamfights, objective calls.
+                </p>
+              </div>
+              <div class="game-slide__col game-slide__col--visual">
+                <figure class="game-slide__art game-slide__art--logo">
+                  <img
+                    class="game-slide__logo-img"
+                    src="images/Games/Mobile Legends Logo.jpg"
+                    width="320"
+                    height="160"
+                    alt="Mobile Legends: Bang Bang logo"
+                    loading="lazy"
+                  />
+                </figure>
+              </div>
+            </div>
+          </article>
+          <article
+            class="game-slide"
+            data-game="honor-of-kings"
+            id="slide-honor-of-kings"
+            aria-hidden="true"
+          >
+            <div class="game-slide__bg game-slide__bg--hok" aria-hidden="true"></div>
+            <div class="game-slide__grid">
+              <div class="game-slide__inner game-slide__col game-slide__col--text">
+                <p class="game-slide__eyebrow">Games we play</p>
+                <h2 class="game-slide__title">Honor of Kings</h2>
+                <p class="game-slide__tagline">
+                  Synced rotations, crystal pressure, clean executions.
+                </p>
+              </div>
+              <div class="game-slide__col game-slide__col--visual">
+                <figure class="game-slide__art game-slide__art--logo">
+                  <img
+                    class="game-slide__logo-img"
+                    src="images/Games/Honor of Kings Logo.jpg"
+                    width="320"
+                    height="160"
+                    alt="Honor of Kings logo"
+                    loading="lazy"
+                  />
+                </figure>
+              </div>
+            </div>
+          </article>
+          <article
+            class="game-slide"
+            data-game="cod-mobile"
+            id="slide-cod-mobile"
+            aria-hidden="true"
+          >
+            <div class="game-slide__bg game-slide__bg--codm" aria-hidden="true"></div>
+            <div class="game-slide__grid">
+              <div class="game-slide__inner game-slide__col game-slide__col--text">
+                <p class="game-slide__eyebrow">Games we play</p>
+                <h2 class="game-slide__title">Call of Duty: Mobile</h2>
+                <p class="game-slide__tagline">
+                  Hardpoint reads, SND comms, and clutch rotations on mobile.
+                </p>
+              </div>
+              <div class="game-slide__col game-slide__col--visual">
+                <figure class="game-slide__art game-slide__art--logo">
+                  <img
+                    class="game-slide__logo-img"
+                    src="images/Games/Call of Duty Mobile Logo.jpg"
+                    width="320"
+                    height="160"
+                    alt="Call of Duty: Mobile logo"
+                    loading="lazy"
+                  />
+                </figure>
+              </div>
+            </div>
+          </article>
+          <article
+            class="game-slide"
+            data-game="dota-2"
+            id="slide-dota-2"
+            aria-hidden="true"
+          >
+            <div class="game-slide__bg game-slide__bg--dota" aria-hidden="true"></div>
+            <div class="game-slide__grid">
+              <div class="game-slide__inner game-slide__col game-slide__col--text">
+                <p class="game-slide__eyebrow">Games we play</p>
+                <h2 class="game-slide__title">Dota 2</h2>
+                <p class="game-slide__tagline">
+                  Map vision, tempo, and high-impact team plays.
+                </p>
+              </div>
+              <div class="game-slide__col game-slide__col--visual">
+                <figure class="game-slide__art game-slide__art--logo">
+                  <img
+                    class="game-slide__logo-img"
+                    src="images/Games/Dota 2 Logo.jpg"
+                    width="320"
+                    height="160"
+                    alt="Dota 2 logo"
+                    loading="lazy"
+                  />
+                </figure>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div class="hero-slider__chrome">
+          <blockquote class="hero-motto" cite="#founder">
+            <p class="hero-motto__quote">
+              “Together we unite, together we ignite.”
+            </p>
+            <footer class="hero-motto__cite">— Frozt</footer>
+          </blockquote>
+          <div
+            class="hero-slider__controls"
+            role="group"
+            aria-label="Slide controls"
+          >
+            <button
+              type="button"
+              class="hero-slider__btn hero-slider__btn--prev"
+              aria-controls="game-slider-slides"
+              aria-label="Previous game"
+            >
+              ‹
+            </button>
+            <div
+              class="hero-slider__dots"
+              id="game-slider-dots"
+              role="tablist"
+              aria-label="Select game"
+            ></div>
+            <button
+              type="button"
+              class="hero-slider__btn hero-slider__btn--next"
+              aria-controls="game-slider-slides"
+              aria-label="Next game"
+            >
+              ›
+            </button>
+          </div>
+          <div class="hero__actions">
+            <a class="btn btn--primary" href="#join">Join the roster</a>
+            <a class="btn btn--ghost" href="#games">All games</a>
+          </div>
+        </div>
+      </section>
+
+      <section id="games" class="section section--games" aria-labelledby="games-heading">
+        <div class="section__inner section__inner--column">
+          <h2 id="games-heading" class="section__title section__title--center">
+            Games we play
+          </h2>
+          <p class="section__text section__text--center">
+            Gear sports on the stadium floor, e-sports in the queue—same Garuda
+            energy across every title we run.
+          </p>
+          <ul class="games-grid" id="games-grid">
+            <li id="game-beyblade" class="games-grid__card games-grid__card--beyblade">
+              <div class="games-grid__media">
+                <img
+                  class="games-grid__logo"
+                  src="images/Games/BeybladeX Logo.jpg"
+                  width="200"
+                  height="80"
+                  alt="Beyblade X"
+                  loading="lazy"
+                />
+                <img
+                  class="games-grid__thumb"
+                  src="images/Phoenix Wing Spirit bey.jpeg"
+                  width="72"
+                  height="72"
+                  alt=""
+                  loading="lazy"
+                />
+              </div>
+              <h3 class="games-grid__name">Beyblade X</h3>
+              <p class="games-grid__desc">
+                League nights and stadium battles—Phoenix Wing energy, Garuda
+                precision on the Bey circuit.
+              </p>
+            </li>
+            <li id="game-mobile-legends" class="games-grid__card games-grid__card--mlbb">
+              <div class="games-grid__media games-grid__media--logo-only">
+                <img
+                  class="games-grid__logo"
+                  src="images/Games/Mobile Legends Logo.jpg"
+                  width="220"
+                  height="90"
+                  alt="Mobile Legends: Bang Bang"
+                  loading="lazy"
+                />
+              </div>
+              <h3 class="games-grid__name">Mobile Legends</h3>
+              <p class="games-grid__desc">
+                Ranked stacks, scrims, and shot-calling that wins objectives.
+              </p>
+            </li>
+            <li id="game-honor-of-kings" class="games-grid__card games-grid__card--hok">
+              <div class="games-grid__media games-grid__media--logo-only">
+                <img
+                  class="games-grid__logo"
+                  src="images/Games/Honor of Kings Logo.jpg"
+                  width="220"
+                  height="90"
+                  alt="Honor of Kings"
+                  loading="lazy"
+                />
+              </div>
+              <h3 class="games-grid__name">Honor of Kings</h3>
+              <p class="games-grid__desc">
+                Coordinated lanes, jungle pathing, and teamfight discipline.
+              </p>
+            </li>
+            <li id="game-cod-mobile" class="games-grid__card games-grid__card--codm">
+              <div class="games-grid__media games-grid__media--logo-only">
+                <img
+                  class="games-grid__logo"
+                  src="images/Games/Call of Duty Mobile Logo.jpg"
+                  width="220"
+                  height="90"
+                  alt="Call of Duty: Mobile"
+                  loading="lazy"
+                />
+              </div>
+              <h3 class="games-grid__name">Call of Duty: Mobile</h3>
+              <p class="games-grid__desc">
+                Ranked stacks, scrims, and comms-first FPS play on the go.
+              </p>
+            </li>
+            <li id="game-dota-2" class="games-grid__card games-grid__card--dota">
+              <div class="games-grid__media games-grid__media--logo-only">
+                <img
+                  class="games-grid__logo"
+                  src="images/Games/Dota 2 Logo.jpg"
+                  width="220"
+                  height="90"
+                  alt="Dota 2"
+                  loading="lazy"
+                />
+              </div>
+              <h3 class="games-grid__name">Dota 2</h3>
+              <p class="games-grid__desc">
+                Draft mind games, map control, and comeback mentality.
+              </p>
+            </li>
+            <li id="game-tekken" class="games-grid__card games-grid__card--tekken">
+              <div class="games-grid__media games-grid__media--logo-only">
+                <img
+                  class="games-grid__logo"
+                  src="images/Games/Tekken Logo.jpg"
+                  width="220"
+                  height="90"
+                  alt="Tekken"
+                  loading="lazy"
+                />
+              </div>
+              <h3 class="games-grid__name">Tekken</h3>
+              <p class="games-grid__desc">
+                Frame-perfect footsies, punishes, and the King of Iron Fist grind.
+              </p>
+            </li>
+            <li id="game-valorant" class="games-grid__card games-grid__card--valorant">
+              <div class="games-grid__media games-grid__media--logo-only">
+                <img
+                  class="games-grid__logo"
+                  src="images/Games/Valorant Logo.jpg"
+                  width="220"
+                  height="90"
+                  alt="Valorant"
+                  loading="lazy"
+                />
+              </div>
+              <h3 class="games-grid__name">Valorant</h3>
+              <p class="games-grid__desc">
+                Tactical 5v5 gunplay, agent utility, and clutch-heavy ranked runs.
+              </p>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="about" class="section section--split">
+        <div class="section__inner">
+          <div class="section__copy">
+            <h2 class="section__title">About the club</h2>
+            <p class="section__text">
+              <strong>Garuda Games</strong> is a <strong>Gear Sports and E-Sports
+              club</strong>—from Beyblade X and competitive spinning gear to MOBA
+              stacks, mobile FPS like Call of Duty: Mobile, and PC play. We are
+              built for members who want structure,
+              hype, and real teamwork, on tables and on servers alike.
+            </p>
+            <p class="section__text">
+              Whether you are grinding rank, chasing podium shots, or your first
+              local win, the bird formation flies together—sharp, loud, and
+              relentless.
+            </p>
+            <ul class="stat-row">
+              <li><span class="stat-row__num">Gear</span> sports track</li>
+              <li><span class="stat-row__num">Esports</span> track</li>
+              <li><span class="stat-row__num">Rep</span> your city</li>
+            </ul>
+          </div>
+          <figure class="section__figure section__figure--logo">
+            <img
+              src="images/Garuda Logo.jpg"
+              alt="Garuda Games logo"
+              loading="lazy"
+            />
+          </figure>
+        </div>
+
+        <div
+          class="org-chart"
+          id="org-chart"
+          aria-labelledby="org-chart-heading"
+        >
+          <h3 id="org-chart-heading" class="org-chart__title">
+            Organizational chart
+          </h3>
+
+          <div id="org-chart-custom" class="org-chart-custom" hidden></div>
+
+          <div id="org-chart-default-wrap">
+          <ol class="org-chart__exec">
+            <li class="org-chart__exec-item">
+              <span class="org-chart__role">Founder</span>
+              <span class="org-chart__name">Frozt</span>
+            </li>
+            <li class="org-chart__exec-item">
+              <span class="org-chart__role">Head Captain</span>
+              <span class="org-chart__name" id="org-head-captain-name"
+                >Blackbeard</span
+              >
+            </li>
+          </ol>
+
+          <h4 class="org-chart__subtitle">Team captains</h4>
+          <ul class="org-chart__roster">
+            <li>
+              <span class="org-chart__squad">Garuda Dark Phoenix</span>
+              <span class="org-chart__person">Frozt</span>
+            </li>
+            <li>
+              <span class="org-chart__squad">Garuda Macaw</span>
+              <span class="org-chart__person">Blackbeard</span>
+            </li>
+            <li>
+              <span class="org-chart__squad">Garuda Guardian</span>
+              <span class="org-chart__person">Kyo</span>
+            </li>
+            <li>
+              <span class="org-chart__squad">Garuda Tengu</span>
+              <span class="org-chart__person">Ryuji</span>
+            </li>
+            <li>
+              <span class="org-chart__squad">Garuda Vortex</span>
+              <span class="org-chart__person">OZ</span>
+            </li>
+            <li>
+              <span class="org-chart__squad">Garuda Harpy</span>
+              <span class="org-chart__person">Kulot</span>
+            </li>
+          </ul>
+
+          <h4 class="org-chart__subtitle">Vice captains</h4>
+          <ul class="org-chart__roster org-chart__roster--vice">
+            <li>
+              <span class="org-chart__squad">Garuda Dark Phoenix</span>
+              <span class="org-chart__person">VennyQT &amp; Wachuchi</span>
+            </li>
+            <li>
+              <span class="org-chart__squad">Garuda Macaw</span>
+              <span class="org-chart__person">Krozzminded &amp; Fukuda</span>
+            </li>
+            <li>
+              <span class="org-chart__squad">Garuda Guardian</span>
+              <span class="org-chart__person">Suman &amp; Captain 2</span>
+            </li>
+            <li>
+              <span class="org-chart__squad">Garuda Tengu</span>
+              <span class="org-chart__person">Heisenberg &amp; Invigo</span>
+            </li>
+            <li>
+              <span class="org-chart__squad">Garuda Vortex</span>
+              <span class="org-chart__person">Obtoots &amp; Skady</span>
+            </li>
+            <li>
+              <span class="org-chart__squad">Garuda Harpy</span>
+              <span class="org-chart__person">Reignstorm &amp; Nyxelia</span>
+            </li>
+          </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="founder" class="section section--founder">
+        <div class="section__inner section__inner--reverse">
+          <figure class="section__figure section__figure--portrait">
+            <div class="portrait-frame">
+              <img
+                src="images/Frozt.png"
+                alt="Frozt, founder of Garuda Games"
+                loading="lazy"
+              />
+            </div>
+            <figcaption class="portrait-caption">
+              <span class="portrait-caption__role">Founder</span>
+              <span class="portrait-caption__name">Frozt</span>
+            </figcaption>
+          </figure>
+          <div class="section__copy">
+            <h2 class="section__title">Founder</h2>
+            <p class="section__text">
+              <strong>Frozt</strong> started Garuda Games to grow a competitive
+              home for gear sports and e-sports athletes who want structure,
+              hype, and real teamwork—not casual play.
+            </p>
+            <p class="section__text">
+              Under his lead, the club pushes pro energy in both scenes:
+              discipline in prep, personality on stream, and respect in every
+              match.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="supporters" class="section section--supporters">
+        <div class="section__inner section__inner--column">
+          <div class="events-header">
+            <h2 class="section__title">Partners &amp; supporters</h2>
+            <p class="section__text section__text--narrow">
+              Garuda Games stands with partners who invest in grassroots talent
+              and the Philippine scene at large. Their programs, visibility,
+              and mentorship help power everything we do.
+            </p>
+          </div>
+
+          <article class="partner-block">
+            <div class="partner-block__head">
+              <div class="partner-block__logo">
+                <img
+                  src="images/Taguig All stars.png"
+                  alt="Taguig All Stars logo"
+                  loading="lazy"
+                />
+              </div>
+              <div class="partner-block__title">
+                <h3 class="partner-block__name">Taguig All Stars</h3>
+                <p class="partner-block__role">Supporting organization</p>
+                <p class="section__text">
+                  A squad that champions grassroots talent and city pride on
+                  the national stage. Taguig All Stars backs our programs,
+                  events, and roster travel.
+                </p>
+                <ul class="partner-block__links">
+                  <li>
+                    <a
+                      class="btn btn--ghost btn--sm"
+                      href="https://www.facebook.com/taguigallstars"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      >Facebook — Taguig All Stars</a
+                    >
+                  </li>
+                  <li>
+                    <a
+                      class="btn btn--messenger btn--sm"
+                      href="https://m.me/ch/AbZ73Q5ajyggYiHb/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      >Messenger — TAS Community chat</a
+                    >
+                  </li>
+                </ul>
+              </div>
+            </div>
+            <div class="supporter-cards">
+              <article class="supporter-card supporter-card--founder">
+                <div class="supporter-card__media supporter-card__media--photo">
+                  <img
+                    src="images/Blackbeard.jpg"
+                    alt="Joedel Lopez Dalioan (Blackbeard), founder of Taguig All Stars"
+                    loading="lazy"
+                  />
+                </div>
+                <h4 class="supporter-card__title">Blackbeard</h4>
+                <p class="supporter-card__meta">Founder, Taguig All Stars</p>
+              </article>
+            </div>
+          </article>
+
+          <article class="partner-block">
+            <div class="partner-block__head">
+              <div class="partner-block__logo">
+                <img
+                  src="images/SA.jpg"
+                  alt="Sylphy Academy logo"
+                  loading="lazy"
+                />
+              </div>
+              <div class="partner-block__title">
+                <h3 class="partner-block__name">Sylphy Academy</h3>
+                <p class="partner-block__role">Partner community</p>
+                <p class="section__text">
+                  Garuda Games and Sylphy Academy stand together as a
+                  partner community in <strong>E-Sports and Gear Sports</strong>
+                  — developing talent, hosting tournaments, and lifting up the
+                  Philippine scene together.
+                </p>
+                <p class="section__text">
+                  From Beyblade X stadiums to MOBA ranked ladders, we share
+                  rosters, scrim partners, and event slots so our players get
+                  real competitive reps and our communities grow side by side.
+                </p>
+                <ul class="partner-block__links">
+                  <li>
+                    <a
+                      class="btn btn--ghost btn--sm"
+                      href="https://www.facebook.com/sylphyacademy"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      >Facebook — Sylphy Academy</a
+                    >
+                  </li>
+                  <li>
+                    <a
+                      class="btn btn--discord btn--sm"
+                      href="https://discord.gg/sylphy"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      >Discord — discord.gg/sylphy</a
+                    >
+                  </li>
+                </ul>
+              </div>
+            </div>
+            <div class="supporter-cards">
+              <article class="supporter-card supporter-card--founder">
+                <div class="supporter-card__media supporter-card__media--photo">
+                  <img
+                    src="images/Syl.png"
+                    alt="Syl, founder of Sylphy Academy"
+                    loading="lazy"
+                  />
+                </div>
+                <h4 class="supporter-card__title">Syl</h4>
+                <p class="supporter-card__meta">Founder, Sylphy Academy</p>
+              </article>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="events" class="section section--events">
+        <div class="section__inner section__inner--column">
+          <div class="events-header">
+            <h2 class="section__title">On the circuit</h2>
+            <p class="section__text section__text--narrow">
+              We show up where the meta is decided—league debuts, seasonal
+              opens, and battles that level up the whole scene.
+            </p>
+          </div>
+          <figure class="events-poster">
+            <img
+              src="images/Philippine Beyblade Battle League Season 5 Debut.jpg"
+              alt="Philippine Beyblade Battle League Season 5 Debut promotional artwork"
+              loading="lazy"
+            />
+          </figure>
+        </div>
+      </section>
+
+      <section id="join" class="section section--cta">
+        <div class="cta-panel">
+          <h2 class="cta-panel__title">Join or collaborate</h2>
+          <p class="cta-panel__text">
+            Want to try out for the roster, partner on an event, or explore a
+            collab? Join our Discord for hangouts and updates, or message us on
+            Facebook—we reply to serious players and organizers alike.
+          </p>
+          <p class="cta-panel__hint">
+            Opens
+            <strong>Garuda BBx</strong>
+            on Facebook. Use
+            <strong>Message</strong>
+            to say you&rsquo;re interested in joining or working with Garuda Games.
+          </p>
+          <div class="cta-panel__actions">
+            <a
+              class="btn btn--discord btn--lg"
+              href="https://discord.gg/dE9PWvmSYT"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Join our Discord
+            </a>
+            <a
+              class="btn btn--facebook btn--lg"
+              href="https://www.facebook.com/profile.php?id=61580826341254"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Message on Facebook
+            </a>
+            <a class="btn btn--primary btn--lg" href="signup.html"
+              >Create member account</a
+            >
+            <a class="btn btn--ghost btn--lg" href="#top">Back to top</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="site-footer__inner">
+        <span class="site-footer__brand">© Garuda Games</span>
+        <ul class="site-footer__links">
+          <li>
+            <a
+              class="site-footer__fb"
+              href="https://www.facebook.com/profile.php?id=61580826341254"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Facebook — Garuda BBx</a
+            >
+          </li>
+          <li>
+            <a
+              href="https://discord.gg/dE9PWvmSYT"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Discord — Garuda Games</a
+            >
+          </li>
+          <li>
+            <a href="news.html">News</a>
+          </li>
+          <li>
+            <a href="members.html">Verify member</a>
+          </li>
+          <li>
+            <a href="leaderboard.html">Leaderboard</a>
+          </li>
+          <li>
+            <a href="signup.html">Sign up</a>
+          </li>
+          <li>
+            <a href="login.html">Member login</a>
+          </li>
+          <li>
+            <a href="dashboard.html" id="footer-dashboard-link" hidden
+              >Dashboard</a
+            >
+          </li>
+        </ul>
+        <span class="site-footer__note"
+          ><span id="site-footer-base-note"
+            >&ldquo;Together we unite, together we ignite.&rdquo; &mdash; Frozt
+            &middot; Partners: Taguig All Stars &amp; Sylphy Academy</span
+          ><span id="site-footer-custom-note"></span
+        ></span>
+      </div>
+    </footer>
+
+    <script src="js/api-client.js"></script>
+    <script src="js/site-custom.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/nav-session.js"></script>
+    <script src="js/main.js"></script>
+  </body>
+</html>

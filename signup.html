@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Create account — Garuda Games</title>
+    <meta
+      name="description"
+      content="Create a Garuda Games member account on this device."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/styles.css" />
+    <script src="js/api-client.js"></script>
+    <script src="js/site-settings.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/nav-session.js"></script>
+  </head>
+  <body>
+    <div class="noise" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <a class="brand" href="index.html#top">
+        <img
+          src="images/Garuda Transparent BG.png"
+          alt=""
+          class="brand__mark"
+          width="48"
+          height="48"
+        />
+        <span class="brand__text">Garuda Games</span>
+      </a>
+      <button
+        type="button"
+        class="nav-toggle"
+        aria-expanded="false"
+        aria-controls="site-nav"
+      >
+        <span class="nav-toggle__bar"></span>
+        <span class="nav-toggle__bar"></span>
+        <span class="nav-toggle__bar"></span>
+        <span class="visually-hidden">Menu</span>
+      </button>
+      <nav id="site-nav" class="site-nav" aria-label="Primary">
+        <a href="index.html#top">Home</a>
+        <a href="news.html" id="nav-news">
+          News
+          <span id="nav-news-badge" class="nav-news__badge" hidden>NEW</span>
+        </a>
+        <a href="signup.html" aria-current="page">Sign up</a>
+        <a href="login.html">Member login</a>
+        <a href="dashboard.html" id="nav-dashboard" hidden>Dashboard</a>
+        <a href="inbox.html" id="nav-inbox" hidden>
+          Inbox
+          <span id="nav-inbox-badge" class="nav-inbox__badge" hidden>0</span>
+        </a>
+        <a href="verifier.html" id="nav-verifier" hidden>Verifier</a>
+        <a href="admin.html" id="nav-admin" hidden>Admin</a>
+        <a href="members.html">Verify member</a>
+        <a href="leaderboard.html">Leaderboard</a>
+        <a href="portfolio.html">Portfolio</a>
+      </nav>
+    </header>
+
+    <main class="auth-page" id="top">
+      <div class="auth-panel">
+        <h1 class="auth-page__title">Create member account</h1>
+        <p class="auth-page__lead">
+          Your account is created on the <strong>Garuda Games server</strong>.
+          Use a strong password: at least <strong>12 characters</strong> with
+          a mix of lowercase, uppercase, digits, and symbols — or a passphrase
+          of 16+ characters. Passwords are hashed with scrypt on the server
+          before storage.
+        </p>
+
+        <p id="signup-status" class="dash-upload-status" aria-live="polite"></p>
+
+        <form id="signup-form" class="auth-form" novalidate>
+          <label for="signup-username">Username</label>
+          <input
+            type="text"
+            id="signup-username"
+            name="username"
+            autocomplete="username"
+            required
+            pattern="[a-z0-9_]{3,32}"
+            title="3–32 characters: lowercase letters, digits, underscore"
+            placeholder="e.g. phoenix_blader"
+          />
+
+          <label for="signup-password">Password (min. 12 characters)</label>
+          <input
+            type="password"
+            id="signup-password"
+            name="password"
+            autocomplete="new-password"
+            required
+            minlength="12"
+            placeholder="Strong passphrase"
+          />
+
+          <label for="signup-password2">Confirm password</label>
+          <input
+            type="password"
+            id="signup-password2"
+            autocomplete="new-password"
+            required
+            minlength="12"
+            placeholder="Repeat password"
+          />
+
+          <label for="signup-ign">In-game name (IGN)</label>
+          <input
+            type="text"
+            id="signup-ign"
+            name="ign"
+            autocomplete="nickname"
+            required
+            placeholder="Your primary IGN"
+            aria-describedby="signup-ign-hint"
+          />
+          <p id="signup-ign-hint" class="admin-hint">
+            Enter only your blader name — the club tag is added automatically
+            on your profile, Digital ID, and the leaderboard.
+          </p>
+
+          <label for="signup-realname">Full name (optional)</label>
+          <input
+            type="text"
+            id="signup-realname"
+            name="realname"
+            autocomplete="name"
+            placeholder="Legal or preferred full name"
+          />
+
+          <label for="signup-squad">Squad</label>
+          <select id="signup-squad" name="squad" required>
+            <option value="" disabled selected>Select your squad</option>
+            <option value="Garuda Dark Phoenix">Garuda Dark Phoenix</option>
+            <option value="Garuda Esports">Garuda Esports</option>
+            <option value="Garuda Guardian">Garuda Guardian</option>
+            <option value="Garuda Harpy">Garuda Harpy</option>
+            <option value="Garuda Macaw">Garuda Macaw</option>
+            <option value="Garuda Tengu">Garuda Tengu</option>
+            <option value="Garuda Vortex">Garuda Vortex</option>
+          </select>
+
+          <label for="signup-games">Games (hold Ctrl / Cmd or tap to pick more than one)</label>
+          <select id="signup-games" name="games" multiple required size="7">
+            <option value="__all__">All Games</option>
+            <option value="Beyblade X">Beyblade X</option>
+            <option value="Call of Duty: Mobile">Call of Duty: Mobile</option>
+            <option value="Dota 2">Dota 2</option>
+            <option value="Honor of Kings">Honor of Kings</option>
+            <option value="Mobile Legends">Mobile Legends</option>
+            <option value="Tekken">Tekken</option>
+            <option value="Valorant">Valorant</option>
+          </select>
+
+          <button type="submit" class="btn btn--primary btn--lg auth-form__submit">
+            Create account
+          </button>
+        </form>
+
+        <p class="auth-page__footer">
+          Already have an account?
+          <a href="login.html">Sign in</a>
+          ·
+          <a href="index.html">← Home</a>
+        </p>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="site-footer__inner">
+        <span class="site-footer__brand">© Garuda Games</span>
+        <span class="site-footer__note">Gear Sports &amp; E-Sports club</span>
+      </div>
+    </footer>
+
+    <script src="js/main.js"></script>
+    <script src="js/signup.js"></script>
+  </body>
+</html>

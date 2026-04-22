@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Member dashboard — Garuda Games</title>
+    <meta name="robots" content="noindex" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/styles.css" />
+    <script src="js/api-client.js"></script>
+    <script src="js/site-settings.js"></script>
+    <script src="js/image-utils.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/nav-session.js"></script>
+  </head>
+  <body>
+    <div class="noise" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <a class="brand" href="index.html#top">
+        <img
+          src="images/Garuda Transparent BG.png"
+          alt=""
+          class="brand__mark"
+          width="48"
+          height="48"
+        />
+        <span class="brand__text">Garuda Games</span>
+      </a>
+      <button
+        type="button"
+        class="nav-toggle"
+        aria-expanded="false"
+        aria-controls="site-nav"
+      >
+        <span class="nav-toggle__bar"></span>
+        <span class="nav-toggle__bar"></span>
+        <span class="nav-toggle__bar"></span>
+        <span class="visually-hidden">Menu</span>
+      </button>
+      <nav id="site-nav" class="site-nav" aria-label="Primary">
+        <a href="index.html#top">Home</a>
+        <a href="news.html" id="nav-news">
+          News
+          <span id="nav-news-badge" class="nav-news__badge" hidden>NEW</span>
+        </a>
+        <a href="signup.html">Sign up</a>
+        <a href="login.html">Member login</a>
+        <a
+          href="dashboard.html"
+          id="nav-dashboard"
+          hidden
+          aria-current="page"
+          >Dashboard</a
+        >
+        <a href="inbox.html" id="nav-inbox" hidden>
+          Inbox
+          <span id="nav-inbox-badge" class="nav-inbox__badge" hidden>0</span>
+        </a>
+        <a href="verifier.html" id="nav-verifier" hidden>Verifier</a>
+        <a href="admin.html" id="nav-admin" hidden>Admin</a>
+        <a href="leaderboard.html">Leaderboard</a>
+        <a href="portfolio.html">Portfolio</a>
+        <a href="members.html">Verify member</a>
+        <button type="button" class="nav-logout" id="nav-logout">
+          Log out
+        </button>
+      </nav>
+    </header>
+
+    <main class="dash-page dash-page--full" id="top">
+      <div class="dash-page__inner">
+        <header class="dash-header">
+          <div class="dash-header__intro">
+            <h1 class="dash-header__title">Member dashboard</h1>
+            <p id="dash-welcome" class="dash-header__welcome"></p>
+            <p id="dash-app-role" class="dash-role-badge"></p>
+          </div>
+          <button
+            type="button"
+            class="btn btn--ghost dash-header__logout"
+            id="dash-logout"
+          >
+            Log out
+          </button>
+        </header>
+
+        <p class="dash-disclaimer">
+          Your profile, submissions, and verified rank points are stored on the
+          Garuda Games server and synced across every device you sign in from.
+        </p>
+
+        <div class="dash-grid dash-grid--wide">
+          <section
+            class="dash-card dash-card--span2 dash-card--news"
+            aria-labelledby="dash-news-heading"
+          >
+            <div class="dash-inbox__header">
+              <h2 id="dash-news-heading" class="dash-card__title">
+                Latest news
+              </h2>
+              <a class="btn btn--ghost btn--sm" href="news.html">
+                See all updates
+              </a>
+            </div>
+            <p class="dash-card__hint">
+              Club announcements, new features, and fixes — in plain English.
+            </p>
+            <div data-news-widget data-limit="3"></div>
+          </section>
+
+          <section class="dash-card dash-card--profile" aria-labelledby="dash-profile-heading">
+            <h2 id="dash-profile-heading" class="dash-card__title">Profile</h2>
+            <p class="dash-card__hint">
+              Only approved achievements earn points. Active-season points
+              reset automatically when the next season begins; lifetime
+              points carry over across every season.
+            </p>
+            <div class="dash-points-banner dash-points-banner--dual">
+              <div class="dash-points-banner__cell">
+                <span class="dash-points-banner__label">
+                  Active season
+                  <span
+                    id="dash-season-label"
+                    class="dash-points-banner__season"
+                  ></span>
+                </span>
+                <span
+                  id="dash-points-value"
+                  class="dash-points-banner__value"
+                >0</span>
+                <span
+                  id="dash-active-events"
+                  class="dash-points-banner__meta"
+                ></span>
+              </div>
+              <div class="dash-points-banner__cell dash-points-banner__cell--muted">
+                <span class="dash-points-banner__label">Lifetime</span>
+                <span
+                  id="dash-lifetime-value"
+                  class="dash-points-banner__value dash-points-banner__value--muted"
+                >0</span>
+                <span
+                  id="dash-lifetime-events"
+                  class="dash-points-banner__meta"
+                ></span>
+              </div>
+            </div>
+            <div class="dash-profile">
+              <div class="dash-profile__photo-wrap">
+                <img
+                  id="dash-photo"
+                  class="dash-profile__photo"
+                  src=""
+                  alt=""
+                  width="200"
+                  height="200"
+                />
+                <label class="dash-upload-label">
+                  Update primary photo
+                  <input
+                    type="file"
+                    id="dash-photo-upload"
+                    accept="image/*"
+                    class="visually-hidden"
+                  />
+                </label>
+                <p id="dash-photo-status" class="dash-upload-status" aria-live="polite"></p>
+              </div>
+              <dl class="dash-profile__dl">
+                <div>
+                  <dt>IGN</dt>
+                  <dd id="dash-ign"></dd>
+                </div>
+                <div>
+                  <dt>Full name</dt>
+                  <dd id="dash-realname"></dd>
+                </div>
+                <div>
+                  <dt>Club role</dt>
+                  <dd id="dash-role"></dd>
+                </div>
+                <div>
+                  <dt>Squad</dt>
+                  <dd id="dash-squad"></dd>
+                </div>
+              </dl>
+            </div>
+            <div class="dash-profile__actions">
+              <button
+                type="button"
+                class="btn btn--primary"
+                id="dash-show-id"
+                aria-haspopup="dialog"
+                aria-controls="digital-id-modal"
+              >
+                Show Garuda digital ID
+              </button>
+              <a
+                class="btn btn--ghost"
+                id="dash-portfolio-link"
+                href="portfolio.html"
+              >
+                View my portfolio
+              </a>
+            </div>
+          </section>
+
+          <section class="dash-card" aria-labelledby="dash-games-heading">
+            <h2 id="dash-games-heading" class="dash-card__title">Your games</h2>
+            <ul id="dash-games" class="dash-games"></ul>
+          </section>
+
+          <section class="dash-card dash-card--span2" aria-labelledby="dash-account-heading">
+            <h2 id="dash-account-heading" class="dash-card__title">Account</h2>
+            <p class="dash-card__hint">
+              Update your roster info or change your password. Changing your
+              password signs you out of all other devices.
+            </p>
+            <div class="dash-account-grid">
+              <form id="form-profile" class="dash-form">
+                <label>In-game name (IGN)
+                  <input type="text" id="profile-ign" required maxlength="64" />
+                </label>
+                <label>Full name
+                  <input type="text" id="profile-realname" maxlength="128" />
+                </label>
+                <label>Squad
+                  <select id="profile-squad" required>
+                    <option value="Garuda Dark Phoenix">Garuda Dark Phoenix</option>
+                    <option value="Garuda Esports">Garuda Esports</option>
+                    <option value="Garuda Guardian">Garuda Guardian</option>
+                    <option value="Garuda Harpy">Garuda Harpy</option>
+                    <option value="Garuda Macaw">Garuda Macaw</option>
+                    <option value="Garuda Tengu">Garuda Tengu</option>
+                    <option value="Garuda Vortex">Garuda Vortex</option>
+                  </select>
+                </label>
+                <label>Games you play
+                  <select
+                    id="profile-games"
+                    multiple
+                    required
+                    size="6"
+                    class="dash-multi"
+                  >
+                    <option value="__all__">All Games</option>
+                    <option value="Beyblade X">Beyblade X</option>
+                    <option value="Call of Duty: Mobile">Call of Duty: Mobile</option>
+                    <option value="Dota 2">Dota 2</option>
+                    <option value="Honor of Kings">Honor of Kings</option>
+                    <option value="Mobile Legends">Mobile Legends</option>
+                    <option value="Tekken">Tekken</option>
+                    <option value="Valorant">Valorant</option>
+                  </select>
+                </label>
+                <button type="submit" class="btn btn--primary">Save profile</button>
+                <p id="profile-status" class="dash-upload-status" aria-live="polite"></p>
+              </form>
+
+              <form id="form-password" class="dash-form">
+                <h3 class="dash-form__sub">Change password</h3>
+                <label>Current password
+                  <input type="password" id="pw-current" autocomplete="current-password" required />
+                </label>
+                <label>New password
+                  <input
+                    type="password"
+                    id="pw-new"
+                    autocomplete="new-password"
+                    required
+                    minlength="12"
+                    placeholder="At least 12 characters"
+                  />
+                </label>
+                <label>Confirm new password
+                  <input
+                    type="password"
+                    id="pw-confirm"
+                    autocomplete="new-password"
+                    required
+                    minlength="12"
+                  />
+                </label>
+                <button type="submit" class="btn btn--ghost">Update password</button>
+                <p id="pw-status" class="dash-upload-status" aria-live="polite"></p>
+              </form>
+
+              <div class="dash-form" id="tfa-card">
+                <h3 class="dash-form__sub">Two-factor authentication</h3>
+                <p class="dash-card__hint" id="tfa-state">Checking…</p>
+
+                <div id="tfa-setup" hidden>
+                  <p class="dash-card__hint">
+                    Scan this QR code with any authenticator app (Google
+                    Authenticator, 1Password, Authy, Bitwarden, …), then
+                    enter the 6-digit code below to turn 2FA on.
+                  </p>
+                  <img
+                    id="tfa-qr"
+                    alt="2FA QR code"
+                    class="tfa-qr"
+                    width="240"
+                    height="240"
+                    hidden
+                  />
+                  <p class="dash-card__hint">
+                    Can't scan? Enter this secret into your app by hand:
+                    <code id="tfa-secret" class="tfa-secret"></code>
+                  </p>
+                  <label>6-digit code
+                    <input
+                      type="text"
+                      id="tfa-verify-code"
+                      inputmode="numeric"
+                      autocomplete="one-time-code"
+                      maxlength="6"
+                      pattern="[0-9]{6}"
+                    />
+                  </label>
+                  <button type="button" class="btn btn--primary" id="tfa-verify-btn">
+                    Turn on 2FA
+                  </button>
+                  <button type="button" class="btn btn--ghost" id="tfa-cancel-btn">
+                    Cancel
+                  </button>
+                </div>
+
+                <div id="tfa-enabled" hidden>
+                  <p class="dash-card__hint">
+                    2FA is currently <strong>on</strong>. Every new sign-in
+                    on this account will ask for a code.
+                  </p>
+                  <label>Enter a current code to turn it off
+                    <input
+                      type="text"
+                      id="tfa-disable-code"
+                      inputmode="numeric"
+                      autocomplete="one-time-code"
+                      maxlength="6"
+                      pattern="[0-9]{6}"
+                    />
+                  </label>
+                  <button type="button" class="btn btn--ghost" id="tfa-disable-btn">
+                    Turn off 2FA
+                  </button>
+                </div>
+
+                <div id="tfa-idle">
+                  <button type="button" class="btn btn--primary" id="tfa-start-btn">
+                    Set up two-factor authentication
+                  </button>
+                </div>
+
+                <p id="tfa-status" class="dash-upload-status" aria-live="polite"></p>
+              </div>
+            </div>
+          </section>
+
+          <section class="dash-card dash-card--span2" aria-labelledby="dash-ach-heading">
+            <h2 id="dash-ach-heading" class="dash-card__title">Submit accomplishment</h2>
+            <p class="dash-card__hint">
+              Points are awarded automatically from your finish plus the
+              tournament size. Submissions stay <strong>pending</strong> until a
+              Verifier approves them.
+            </p>
+            <div class="dash-rank-key">
+              <strong>Scoring:</strong> Champion 20 · Swiss King 10 · 2nd 10 ·
+              3rd 5 · Podium 4th+ 2 each · <em>Grand Tournament</em> (64+ players)
+              doubles every value.
+            </div>
+            <form id="form-achievement" class="dash-form">
+              <label>Event name
+                <input type="text" id="ach-event" required placeholder="Tournament or league name" />
+              </label>
+              <label>Event date
+                <input
+                  type="date"
+                  id="ach-event-date"
+                  required
+                  aria-describedby="ach-event-date-hint"
+                />
+                <small id="ach-event-date-hint" class="dash-form__hint">
+                  The actual date the tournament was held. Must be today or
+                  earlier.
+                </small>
+              </label>
+              <label>Game
+                <select id="ach-game" required>
+                  <option value="Beyblade X">Beyblade X</option>
+                  <option value="Call of Duty: Mobile">Call of Duty: Mobile</option>
+                  <option value="Dota 2">Dota 2</option>
+                  <option value="Honor of Kings">Honor of Kings</option>
+                  <option value="Mobile Legends">Mobile Legends</option>
+                  <option value="Tekken">Tekken</option>
+                  <option value="Valorant">Valorant</option>
+                </select>
+              </label>
+              <label>Player count
+                <input
+                  type="number"
+                  id="ach-players"
+                  min="2"
+                  max="4096"
+                  required
+                  placeholder="Total participants"
+                />
+              </label>
+              <label>Finish
+                <select id="ach-rank" required>
+                  <option value="">Select rank</option>
+                  <option value="champ">Champion — 20 pts</option>
+                  <option value="swiss_king">Swiss King — 10 pts</option>
+                  <option value="2nd">2nd — 10 pts</option>
+                  <option value="3rd">3rd — 5 pts</option>
+                  <option value="podium">Podium 4th, 5th, 6th… — 2 pts each</option>
+                </select>
+              </label>
+              <label id="ach-placement-wrap" hidden>Placement number
+                <input
+                  type="number"
+                  id="ach-placement"
+                  min="4"
+                  max="128"
+                  placeholder="4, 5, 6, 7…"
+                />
+              </label>
+              <label>Challonge link
+                <input type="url" id="ach-challonge" placeholder="https://challonge.com/..." />
+              </label>
+              <label>Poster (optional)
+                <input type="file" id="ach-poster" accept="image/*" />
+              </label>
+              <p id="ach-points-preview" class="dash-points-preview" aria-live="polite"></p>
+              <button type="submit" class="btn btn--primary">Submit for verification</button>
+            </form>
+            <p id="ach-form-status" class="dash-upload-status" aria-live="polite"></p>
+          </section>
+
+          <section class="dash-card dash-card--span2" aria-labelledby="dash-jlap-heading">
+            <h2 id="dash-jlap-heading" class="dash-card__title">JLAP certification</h2>
+            <p class="dash-card__hint">
+              Upload your <strong>JLAP certificate</strong> and
+              <strong>JLAP verification QR</strong> as separate images. A Verifier
+              will review both.
+            </p>
+            <form id="form-jlap" class="dash-form">
+              <label>JLAP certificate (image)
+                <input type="file" id="jlap-cert" accept="image/*" required />
+              </label>
+              <label>JLAP verification QR (image)
+                <input type="file" id="jlap-qr" accept="image/*" required />
+              </label>
+              <button type="submit" class="btn btn--primary">Submit JLAP package</button>
+            </form>
+            <p id="jlap-form-status" class="dash-upload-status" aria-live="polite"></p>
+          </section>
+
+          <section class="dash-card dash-card--span2" aria-labelledby="dash-sub-heading">
+            <h2 id="dash-sub-heading" class="dash-card__title">Submission records</h2>
+            <div class="dash-table-wrap">
+              <table class="dash-table">
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th>Detail</th>
+                    <th>Status</th>
+                    <th>Verifier note</th>
+                  </tr>
+                </thead>
+                <tbody id="submissions-tbody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="dash-card dash-card--span2" aria-labelledby="dash-gallery-heading">
+            <h2 id="dash-gallery-heading" class="dash-card__title">Poster gallery</h2>
+            <div id="dash-gallery" class="dash-gallery"></div>
+          </section>
+
+          <section class="dash-card dash-card--links" aria-labelledby="dash-links-heading">
+            <h2 id="dash-links-heading" class="dash-card__title">Club links</h2>
+            <ul class="dash-links">
+              <li>
+                <a href="news.html">What's new — club updates</a>
+              </li>
+              <li>
+                <a href="https://discord.gg/dE9PWvmSYT" target="_blank" rel="noopener noreferrer"
+                  >Discord</a
+                >
+              </li>
+              <li>
+                <a
+                  href="https://www.facebook.com/profile.php?id=61580826341254"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  >Facebook</a
+                >
+              </li>
+              <li><a href="index.html#org-chart">Organizational chart</a></li>
+              <li><a href="index.html#games">Games we play</a></li>
+            </ul>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <div
+      class="admin-modal"
+      id="digital-id-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="digital-id-modal-title"
+      hidden
+    >
+      <div class="admin-modal__backdrop" data-id-modal-close></div>
+      <div class="admin-modal__panel admin-modal__panel--narrow">
+        <header class="admin-modal__header">
+          <h2 class="admin-modal__title" id="digital-id-modal-title">
+            Garuda digital ID
+          </h2>
+          <button
+            type="button"
+            class="admin-modal__close"
+            data-id-modal-close
+            aria-label="Close"
+          >
+            &times;
+          </button>
+        </header>
+        <div class="admin-modal__body">
+          <p class="dash-card__hint">
+            The card shows <strong>verifier-approved</strong> flags only. Select
+            what you are claiming, then submit for verification — the ID
+            updates after a Verifier approves.
+          </p>
+          <div class="digital-id-layout">
+            <div class="digital-id-card" aria-label="Digital membership ID">
+              <div class="digital-id-card__brand">
+                <img
+                  class="digital-id-card__logo"
+                  src="images/Garuda Transparent BG.png"
+                  width="280"
+                  height="120"
+                  alt="Garuda Beyblade X"
+                />
+              </div>
+              <div class="digital-id-card__header">Garuda Games</div>
+              <div class="digital-id-card__body">
+                <img
+                  id="digital-id-photo"
+                  class="digital-id-card__photo"
+                  src=""
+                  alt=""
+                  width="120"
+                  height="120"
+                />
+                <div class="digital-id-card__meta">
+                  <p class="digital-id-card__ign" id="digital-id-ign"></p>
+                  <p class="digital-id-card__name" id="digital-id-name"></p>
+                  <p class="digital-id-card__squad" id="digital-id-squad"></p>
+                  <p
+                    class="digital-id-card__clubrole"
+                    id="digital-id-clubrole"
+                    hidden
+                  ></p>
+                  <ul class="digital-id-card__badges">
+                    <li>
+                      Certified Judge:
+                      <strong id="id-certified-judge">No</strong>
+                    </li>
+                    <li class="digital-id-card__pro-line">
+                      Pro Games:
+                      <span
+                        id="id-professional-games"
+                        class="digital-id-card__pro-pills"
+                      ></span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+            <div class="digital-id-controls">
+              <p
+                id="id-flags-review-note"
+                class="id-flags-review-note"
+                aria-live="polite"
+              ></p>
+              <label class="dash-check">
+                <input type="checkbox" id="id-meta-judge" />
+                Certified Judge
+              </label>
+              <fieldset
+                class="dash-pro-games"
+                aria-describedby="id-meta-pro-help"
+              >
+                <legend>Professional Games</legend>
+                <p id="id-meta-pro-help" class="dash-pro-games__help">
+                  Tick every game you're claiming a Pro status for. Each one
+                  still has to clear a verifier before the pill shows up.
+                </p>
+                <div id="id-meta-pro-list" class="dash-pro-games__list"></div>
+              </fieldset>
+              <button
+                type="button"
+                class="btn btn--primary"
+                id="id-meta-save"
+              >
+                Submit for verification
+              </button>
+              <p
+                id="id-meta-status"
+                class="dash-upload-status"
+                aria-live="polite"
+              ></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="site-footer">
+      <div class="site-footer__inner">
+        <span class="site-footer__brand">© Garuda Games</span>
+        <span class="site-footer__note">Member dashboard · Garuda Games API</span>
+      </div>
+    </footer>
+
+    <script src="js/main.js"></script>
+    <script src="js/pro-flags.js"></script>
+    <script src="js/news-widget.js"></script>
+    <script src="js/dashboard-app.js"></script>
+  </body>
+</html>

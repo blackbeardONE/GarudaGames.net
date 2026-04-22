@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Leaderboard — Garuda Games</title>
+    <meta
+      name="description"
+      content="Verified rank-point leaderboard across every Garuda Games squad and discipline."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/styles.css" />
+    <script src="js/api-client.js"></script>
+    <script src="js/site-settings.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/nav-session.js"></script>
+  </head>
+  <body>
+    <div class="noise" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <a class="brand" href="index.html#top">
+        <img
+          src="images/Garuda Transparent BG.png"
+          alt=""
+          class="brand__mark"
+          width="48"
+          height="48"
+        />
+        <span class="brand__text">Garuda Games</span>
+      </a>
+      <button
+        type="button"
+        class="nav-toggle"
+        aria-expanded="false"
+        aria-controls="site-nav"
+      >
+        <span class="nav-toggle__bar"></span>
+        <span class="nav-toggle__bar"></span>
+        <span class="nav-toggle__bar"></span>
+        <span class="visually-hidden">Menu</span>
+      </button>
+      <nav id="site-nav" class="site-nav" aria-label="Primary">
+        <a href="index.html#top">Home</a>
+        <a href="news.html" id="nav-news">
+          News
+          <span id="nav-news-badge" class="nav-news__badge" hidden>NEW</span>
+        </a>
+        <a href="members.html">Verify member</a>
+        <a href="leaderboard.html" aria-current="page">Leaderboard</a>
+        <a href="portfolio.html">Portfolio</a>
+        <a href="signup.html">Sign up</a>
+        <a href="login.html">Member login</a>
+        <a href="dashboard.html" id="nav-dashboard" hidden>Dashboard</a>
+        <a href="inbox.html" id="nav-inbox" hidden>
+          Inbox
+          <span id="nav-inbox-badge" class="nav-inbox__badge" hidden>0</span>
+        </a>
+        <a href="verifier.html" id="nav-verifier" hidden>Verifier</a>
+        <a href="admin.html" id="nav-admin" hidden>Admin</a>
+        <button type="button" class="nav-logout" id="nav-logout" hidden>
+          Log out
+        </button>
+      </nav>
+    </header>
+
+    <main class="leaderboard-page" id="top">
+      <div class="leaderboard-page__inner">
+        <header class="leaderboard-hero">
+          <h1 class="leaderboard-hero__title">Leaderboard</h1>
+          <p class="leaderboard-hero__sub">
+            Verified rank points across every Garuda Games squad and
+            discipline.
+          </p>
+          <div class="leaderboard-scoring">
+            <h2>Scoring</h2>
+            <ul>
+              <li><strong>Champion</strong> — 20 pts</li>
+              <li><strong>Swiss King</strong> — 10 pts</li>
+              <li><strong>2nd</strong> — 10 pts</li>
+              <li><strong>3rd</strong> — 5 pts</li>
+              <li><strong>Podium 4th+</strong> — 2 pts each</li>
+              <li>
+                <strong>Grand Tournament</strong> (64+ players) — every value
+                doubled
+              </li>
+            </ul>
+          </div>
+        </header>
+
+        <div class="leaderboard-toolbar">
+          <label class="leaderboard-search">
+            <span class="visually-hidden">Search members</span>
+            <input
+              type="search"
+              id="lb-search"
+              placeholder="Search by IGN or squad"
+              autocomplete="off"
+            />
+          </label>
+          <label class="leaderboard-select">
+            <span class="visually-hidden">Season</span>
+            <select id="lb-season" aria-label="Season filter">
+              <option value="all">All time</option>
+            </select>
+          </label>
+          <div
+            class="leaderboard-chips leaderboard-chips--games"
+            id="lb-game-chips"
+            role="tablist"
+            aria-label="Game filter"
+          >
+            <button
+              type="button"
+              class="chip chip--active"
+              data-game="all"
+              role="tab"
+              aria-selected="true"
+            >
+              All games
+            </button>
+          </div>
+          <div
+            class="leaderboard-chips"
+            id="lb-squad-chips"
+            role="tablist"
+            aria-label="Squad filter"
+          >
+            <button
+              type="button"
+              class="chip chip--active"
+              data-squad=""
+              role="tab"
+              aria-selected="true"
+            >
+              All squads
+            </button>
+          </div>
+        </div>
+
+        <section class="leaderboard-top" aria-label="Top three">
+          <div id="lb-top-cards" class="leaderboard-top__cards"></div>
+        </section>
+
+        <section class="leaderboard-table-wrap">
+          <table class="leaderboard-table">
+            <thead>
+              <tr>
+                <th scope="col">Rank</th>
+                <th scope="col">Member</th>
+                <th scope="col">Squad</th>
+                <th scope="col">Wins</th>
+                <th scope="col">Points</th>
+              </tr>
+            </thead>
+            <tbody id="lb-tbody"></tbody>
+          </table>
+          <p id="lb-empty" class="leaderboard-empty" hidden>
+            No verified results yet. Earn points by finishing on the podium in
+            an officiated tournament.
+          </p>
+        </section>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="site-footer__inner">
+        <span class="site-footer__brand">© Garuda Games</span>
+        <span class="site-footer__note">Leaderboard · verified results only</span>
+      </div>
+    </footer>
+
+    <script src="js/main.js"></script>
+    <script src="js/pro-flags.js"></script>
+    <script src="js/leaderboard.js"></script>
+  </body>
+</html>

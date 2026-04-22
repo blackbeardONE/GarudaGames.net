@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Member login — Garuda Games</title>
+    <meta
+      name="description"
+      content="Sign in to the Garuda Games member dashboard."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/styles.css" />
+    <script src="js/api-client.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/nav-session.js"></script>
+  </head>
+  <body>
+    <div class="noise" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <a class="brand" href="index.html#top">
+        <img
+          src="images/Garuda Transparent BG.png"
+          alt=""
+          class="brand__mark"
+          width="48"
+          height="48"
+        />
+        <span class="brand__text">Garuda Games</span>
+      </a>
+      <button
+        type="button"
+        class="nav-toggle"
+        aria-expanded="false"
+        aria-controls="site-nav"
+      >
+        <span class="nav-toggle__bar"></span>
+        <span class="nav-toggle__bar"></span>
+        <span class="nav-toggle__bar"></span>
+        <span class="visually-hidden">Menu</span>
+      </button>
+      <nav id="site-nav" class="site-nav" aria-label="Primary">
+        <a href="index.html#top">Home</a>
+        <a href="news.html" id="nav-news">
+          News
+          <span id="nav-news-badge" class="nav-news__badge" hidden>NEW</span>
+        </a>
+        <a href="signup.html">Sign up</a>
+        <a href="login.html" aria-current="page">Member login</a>
+        <a href="dashboard.html" id="nav-dashboard" hidden>Dashboard</a>
+        <a href="inbox.html" id="nav-inbox" hidden>
+          Inbox
+          <span id="nav-inbox-badge" class="nav-inbox__badge" hidden>0</span>
+        </a>
+        <a href="verifier.html" id="nav-verifier" hidden>Verifier</a>
+        <a href="admin.html" id="nav-admin" hidden>Admin</a>
+        <a href="members.html">Verify member</a>
+        <a href="leaderboard.html">Leaderboard</a>
+        <a href="portfolio.html">Portfolio</a>
+      </nav>
+    </header>
+
+    <main class="auth-page" id="top">
+      <div class="auth-panel">
+        <h1 class="auth-page__title">Member login</h1>
+        <p class="auth-page__lead">
+          Sign in with the username and password you created at registration.
+          Accounts are stored on the <strong>Garuda Games server</strong>.
+        </p>
+        <p id="login-registered-note" class="auth-page__info" hidden>
+          Account created — you can sign in below.
+        </p>
+
+        <div
+          id="login-error"
+          class="login-error"
+          role="alert"
+          hidden
+        ></div>
+
+        <form id="login-form" class="auth-form" novalidate>
+          <label for="login-username">Username</label>
+          <input
+            type="text"
+            id="login-username"
+            name="username"
+            autocomplete="username"
+            required
+            placeholder="Club login username"
+          />
+
+          <label for="login-password">Password</label>
+          <input
+            type="password"
+            id="login-password"
+            name="password"
+            autocomplete="current-password"
+            required
+            placeholder="Password"
+          />
+
+          <div id="login-totp-block" hidden>
+            <label for="login-totp">Authenticator code</label>
+            <input
+              type="text"
+              id="login-totp"
+              name="totpCode"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              maxlength="6"
+              pattern="[0-9]{6}"
+              placeholder="6-digit code"
+            />
+            <p class="auth-page__info">
+              This account has two-factor authentication on. Enter the
+              current code from your authenticator app.
+            </p>
+          </div>
+
+          <button type="submit" class="btn btn--primary btn--lg auth-form__submit">
+            Sign in
+          </button>
+        </form>
+
+        <p class="auth-page__footer">
+          <a href="signup.html">Create an account</a>
+          ·
+          <a href="forgot-password.html">Forgot password?</a>
+          ·
+          <a href="index.html">← Home</a>
+          ·
+          <a href="https://discord.gg/dE9PWvmSYT" target="_blank" rel="noopener noreferrer"
+            >Discord</a
+          >
+        </p>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="site-footer__inner">
+        <span class="site-footer__brand">© Garuda Games</span>
+        <span class="site-footer__note">Gear Sports &amp; E-Sports club</span>
+      </div>
+    </footer>
+
+    <script src="js/main.js"></script>
+    <script src="js/login.js"></script>
+  </body>
+</html>

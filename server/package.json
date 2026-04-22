@@ -1,0 +1,25 @@
+{
+  "name": "garuda-games-api",
+  "version": "1.6.0",
+  "description": "Garuda Games API: auth, members, submissions, verification, news, site custom.",
+  "private": true,
+  "main": "index.js",
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --test --test-reporter=spec \"test/**/*.test.js\""
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "cookie-parser": "^1.4.6",
+    "express": "^4.21.0",
+    "express-rate-limit": "^7.4.0",
+    "qrcode": "^1.5.4",
+    "sanitize-html": "^2.13.0"
+  },
+  "devDependencies": {
+    "supertest": "^7.2.2"
+  }
+}

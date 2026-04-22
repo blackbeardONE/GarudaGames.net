@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin — Garuda Games</title>
+    <meta name="robots" content="noindex" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/styles.css" />
+    <script src="js/api-client.js"></script>
+    <script src="js/site-settings.js"></script>
+    <script src="js/image-utils.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/nav-session.js"></script>
+  </head>
+  <body>
+    <div class="noise" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <a class="brand" href="index.html#top">
+        <img
+          src="images/Garuda Transparent BG.png"
+          alt=""
+          class="brand__mark"
+          width="48"
+          height="48"
+        />
+        <span class="brand__text">Garuda Games</span>
+      </a>
+      <button
+        type="button"
+        class="nav-toggle"
+        aria-expanded="false"
+        aria-controls="site-nav"
+      >
+        <span class="nav-toggle__bar"></span>
+        <span class="nav-toggle__bar"></span>
+        <span class="nav-toggle__bar"></span>
+        <span class="visually-hidden">Menu</span>
+      </button>
+      <nav id="site-nav" class="site-nav" aria-label="Primary">
+        <a href="index.html#top">Home</a>
+        <a href="news.html" id="nav-news">
+          News
+          <span id="nav-news-badge" class="nav-news__badge" hidden>NEW</span>
+        </a>
+        <a href="dashboard.html" id="nav-dashboard" hidden>Dashboard</a>
+        <a href="inbox.html" id="nav-inbox" hidden>
+          Inbox
+          <span id="nav-inbox-badge" class="nav-inbox__badge" hidden>0</span>
+        </a>
+        <a href="verifier.html">Verifier</a>
+        <a href="admin.html" aria-current="page">Admin</a>
+        <a href="leaderboard.html">Leaderboard</a>
+        <a href="portfolio.html">Portfolio</a>
+        <button type="button" class="nav-logout" id="nav-logout">
+          Log out
+        </button>
+      </nav>
+    </header>
+
+    <main class="dash-page admin-page">
+      <div class="dash-page__inner">
+        <header class="dash-header">
+          <div class="dash-header__intro">
+            <h1 class="dash-header__title">Admin dashboard</h1>
+            <p class="dash-header__welcome">
+              Overview of the Garuda Games roster, verification queue, and
+              site configuration. New members can self-register via
+              <strong>Sign up</strong> on the public site.
+            </p>
+          </div>
+          <nav class="dash-quick-actions" aria-label="Admin quick actions">
+            <a class="btn btn--ghost btn--sm" href="verifier.html">Verifier queue</a>
+            <a class="btn btn--ghost btn--sm" href="#adm-m">Members</a>
+            <a class="btn btn--ghost btn--sm" href="#adm-s">Site settings</a>
+            <a class="btn btn--ghost btn--sm" href="news.html">News &amp; updates</a>
+            <button type="button" class="btn btn--ghost btn--sm" id="admin-export-top">Export backup</button>
+          </nav>
+        </header>
+
+        <section class="dash-card dash-card--news" aria-labelledby="adm-news">
+          <div class="dash-inbox__header">
+            <h2 id="adm-news" class="dash-card__title">Latest news</h2>
+            <a class="btn btn--ghost btn--sm" href="news.html">
+              Manage news
+            </a>
+          </div>
+          <p class="dash-card__hint">
+            Remember: every member-visible change should ship with a
+            friendly post here. Use <strong>Manage news</strong> to add one.
+          </p>
+          <div data-news-widget data-limit="3"></div>
+        </section>
+
+        <section class="dash-card dash-overview" aria-labelledby="adm-o">
+          <h2 id="adm-o" class="dash-card__title">Overview</h2>
+          <div class="stats-grid" id="adm-stats-grid">
+            <article class="stats-card">
+              <span class="stats-card__label">Total members</span>
+              <strong class="stats-card__value" id="stat-total-members">—</strong>
+              <span class="stats-card__sub" id="stat-members-breakdown">&nbsp;</span>
+            </article>
+            <article class="stats-card">
+              <span class="stats-card__label">Pending queue</span>
+              <strong class="stats-card__value" id="stat-pending-total">—</strong>
+              <span class="stats-card__sub" id="stat-pending-breakdown">&nbsp;</span>
+            </article>
+            <article class="stats-card">
+              <span class="stats-card__label">Verified submissions</span>
+              <strong class="stats-card__value" id="stat-verified-total">—</strong>
+              <span class="stats-card__sub" id="stat-verified-breakdown">&nbsp;</span>
+            </article>
+            <article class="stats-card">
+              <span class="stats-card__label">Points awarded</span>
+              <strong class="stats-card__value" id="stat-points-total">—</strong>
+              <span class="stats-card__sub">Across all verified achievements</span>
+            </article>
+          </div>
+
+          <div class="overview-split">
+            <div class="overview-block">
+              <h3 class="admin-subtitle">Top members by points</h3>
+              <div class="dash-table-wrap">
+                <table class="dash-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Username</th>
+                      <th>IGN</th>
+                      <th>Role</th>
+                      <th>Points</th>
+                    </tr>
+                  </thead>
+                  <tbody id="adm-top-tbody">
+                    <tr><td colspan="5" class="dash-table-empty">Loading…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="overview-block">
+              <h3 class="admin-subtitle">Recently registered</h3>
+              <div class="dash-table-wrap">
+                <table class="dash-table">
+                  <thead>
+                    <tr>
+                      <th>Username</th>
+                      <th>Role</th>
+                      <th>Joined</th>
+                    </tr>
+                  </thead>
+                  <tbody id="adm-recent-tbody">
+                    <tr><td colspan="3" class="dash-table-empty">Loading…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="dash-card" aria-labelledby="adm-m">
+          <h2 id="adm-m" class="dash-card__title">Members</h2>
+          <p class="dash-placeholder">
+            Member accounts are stored on the Garuda Games server (passwords
+            are scrypt-hashed). Promote <strong>user</strong> to verifier or
+            admin here. Removing a member permanently deletes their account
+            and submissions.
+          </p>
+          <div class="admin-members-toolbar">
+            <label class="admin-search-label">
+              <span>Search</span>
+              <input
+                type="search"
+                id="admin-members-search"
+                placeholder="Username, IGN, or name…"
+                autocomplete="off"
+              />
+            </label>
+            <label class="admin-page-size-label">
+              <span>Per page</span>
+              <select id="admin-page-size">
+                <option value="10">10</option>
+                <option value="25" selected>25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+            </label>
+            <div class="admin-role-chips" id="admin-role-chips" role="tablist">
+              <button
+                type="button"
+                class="chip chip--active"
+                data-role=""
+                role="tab"
+                aria-selected="true"
+              >
+                All roles
+              </button>
+              <button type="button" class="chip" data-role="user" role="tab" aria-selected="false">Users</button>
+              <button type="button" class="chip" data-role="verifier" role="tab" aria-selected="false">Verifiers</button>
+              <button type="button" class="chip" data-role="admin" role="tab" aria-selected="false">Admins</button>
+            </div>
+            <button
+              type="button"
+              class="btn btn--ghost btn--sm admin-members-csv"
+              id="admin-members-csv"
+            >
+              Export CSV
+            </button>
+          </div>
+          <div class="dash-table-wrap">
+            <table class="dash-table admin-members-table">
+              <thead>
+                <tr>
+                  <th data-sort="username">Username <span class="admin-sort-indicator"></span></th>
+                  <th data-sort="ign">IGN <span class="admin-sort-indicator"></span></th>
+                  <th data-sort="clubRole">Club role <span class="admin-sort-indicator"></span></th>
+                  <th data-sort="points">Points <span class="admin-sort-indicator"></span></th>
+                  <th data-sort="role">System role <span class="admin-sort-indicator"></span></th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="admin-members-tbody"></tbody>
+            </table>
+          </div>
+          <nav class="admin-pager" aria-label="Members pagination">
+            <button
+              type="button"
+              class="btn btn--ghost btn--sm"
+              id="admin-pager-prev"
+            >
+              ← Prev
+            </button>
+            <span class="admin-pager__info" id="admin-pager-info">—</span>
+            <button
+              type="button"
+              class="btn btn--ghost btn--sm"
+              id="admin-pager-next"
+            >
+              Next →
+            </button>
+          </nav>
+
+          <h3 class="admin-subtitle">Add member</h3>
+          <div class="admin-form-grid">
+            <label>Username <input type="text" id="adm-username" autocomplete="off" /></label>
+            <label>Password (12+ chars) <input type="password" id="adm-password" autocomplete="new-password" minlength="12" /></label>
+            <label>System role
+              <select id="adm-role">
+                <option value="user">user</option>
+                <option value="verifier">verifier</option>
+                <option value="admin">admin</option>
+              </select>
+            </label>
+            <label>IGN <input type="text" id="adm-ign" /></label>
+            <label>Full name <input type="text" id="adm-realname" /></label>
+            <label>Squad <input type="text" id="adm-squad" /></label>
+            <label>Club role
+              <select id="adm-clubrole">
+                <option value="Member" selected>Member</option>
+                <option value="Vice Captain">Vice Captain</option>
+                <option value="Captain">Captain</option>
+                <option value="Head Captain">Head Captain</option>
+                <option value="Founder">Founder</option>
+              </select>
+            </label>
+            <label class="admin-span-2">Games (comma or newline)
+              <textarea id="adm-games" rows="2" placeholder="Beyblade X, Mobile Legends"></textarea>
+            </label>
+          </div>
+          <button type="button" class="btn btn--primary" id="admin-add-member">
+            Add member
+          </button>
+          <p id="adm-member-status" class="admin-status" aria-live="polite"></p>
+        </section>
+
+        <section class="dash-card" aria-labelledby="adm-s">
+          <h2 id="adm-s" class="dash-card__title">Site customization</h2>
+          <p class="dash-placeholder">
+            Applies to every visitor — saved on the Garuda Games server.
+            Custom org chart HTML is sanitized server-side on save (tags and
+            attributes are allowlisted; <code>&lt;script&gt;</code>, event
+            handlers, and disallowed URLs are stripped).
+          </p>
+
+          <label class="admin-label">Club tag (prepended to every blader name)</label>
+          <input
+            type="text"
+            id="adm-club-tag"
+            class="admin-input-wide"
+            maxlength="24"
+            placeholder="GRD|TAS"
+          />
+          <p class="admin-hint">
+            Shown on member verification, the dashboard profile, the Digital ID,
+            and the leaderboard as <code>&lt;tag&gt; &lt;IGN&gt;</code>. Leave
+            blank to disable the prefix.
+          </p>
+
+          <label class="admin-label">Extra footer line (appended)</label>
+          <textarea id="adm-footer-note" rows="2"></textarea>
+
+          <label class="admin-label">Header tagline (below nav area — uses fixed bar)</label>
+          <input type="text" id="adm-tagline" class="admin-input-wide" placeholder="Optional tagline" />
+
+          <label class="admin-label">Head Captain name (replaces default on home org chart)</label>
+          <input type="text" id="adm-head-captain" class="admin-input-wide" />
+
+          <label class="admin-label">Extra nav links (JSON array)</label>
+          <textarea id="adm-menu-json" rows="4" class="admin-mono">[]</textarea>
+          <p class="admin-hint">
+            Example:
+            <code>[{"label":"Rules","href":"https://example.com"}]</code>
+          </p>
+
+          <label class="admin-label">Extra games (one per line — simple cards on home)</label>
+          <textarea id="adm-games-extra" rows="3"></textarea>
+
+          <label class="admin-label">Replace org chart block (HTML)</label>
+          <textarea id="adm-org-html" rows="6" class="admin-mono"></textarea>
+
+          <label class="admin-label">Club logo (navbar mark)</label>
+          <input type="file" id="adm-brand-file" accept="image/*" />
+          <input type="hidden" id="adm-brand-data" value="" />
+
+          <div class="admin-actions">
+            <button type="button" class="btn btn--primary" id="admin-save-site">
+              Save site settings
+            </button>
+            <button type="button" class="btn btn--ghost" id="admin-export">
+              Export local data (JSON)
+            </button>
+          </div>
+          <p id="adm-site-status" class="admin-status" aria-live="polite"></p>
+        </section>
+
+        <section class="dash-card" aria-labelledby="adm-audit">
+          <h2 id="adm-audit" class="dash-card__title">Audit log</h2>
+          <p class="dash-card__hint">
+            Every administrative and verifier action is recorded here.
+            Read-only; entries cannot be edited or removed.
+          </p>
+          <div class="audit-toolbar">
+            <label class="audit-filter">
+              <span>Action</span>
+              <select id="audit-action">
+                <option value="">All actions</option>
+              </select>
+            </label>
+            <label class="audit-filter">
+              <span>Actor</span>
+              <input
+                type="search"
+                id="audit-actor"
+                placeholder="username contains…"
+                autocomplete="off"
+              />
+            </label>
+            <label class="audit-filter">
+              <span>Target</span>
+              <input
+                type="search"
+                id="audit-target"
+                placeholder="target contains…"
+                autocomplete="off"
+              />
+            </label>
+            <label class="audit-filter">
+              <span>Since</span>
+              <select id="audit-since">
+                <option value="0">Any time</option>
+                <option value="1">Last 24 hours</option>
+                <option value="7">Last 7 days</option>
+                <option value="30">Last 30 days</option>
+              </select>
+            </label>
+            <button type="button" class="btn btn--ghost btn--sm" id="audit-refresh">
+              Refresh
+            </button>
+          </div>
+          <p class="audit-meta" id="audit-meta" aria-live="polite">Loading…</p>
+          <div class="dash-table-wrap">
+            <table class="dash-table audit-table">
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>Actor</th>
+                  <th>Action</th>
+                  <th>Target</th>
+                  <th>IP</th>
+                  <th>Detail</th>
+                </tr>
+              </thead>
+              <tbody id="audit-tbody">
+                <tr><td colspan="6" class="dash-table-empty">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="audit-actions">
+            <button
+              type="button"
+              class="btn btn--ghost btn--sm"
+              id="audit-load-more"
+              hidden
+            >
+              Load more
+            </button>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <div
+      class="admin-modal"
+      id="admin-profile-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="admin-profile-title"
+      hidden
+    >
+      <div class="admin-modal__backdrop" data-close-modal></div>
+      <div class="admin-modal__panel" role="document">
+        <header class="admin-modal__header">
+          <h2 class="admin-modal__title" id="admin-profile-title">
+            Member profile
+          </h2>
+          <button
+            type="button"
+            class="admin-modal__close"
+            data-close-modal
+            aria-label="Close profile"
+          >
+            ×
+          </button>
+        </header>
+        <div class="admin-modal__body" id="admin-profile-body">
+          <p class="admin-status">Loading…</p>
+        </div>
+      </div>
+    </div>
+
+    <footer class="site-footer">
+      <div class="site-footer__inner">
+        <span class="site-footer__brand">© Garuda Games</span>
+        <span class="site-footer__note">Admin dashboard · Garuda Games API</span>
+      </div>
+    </footer>
+
+    <script src="js/main.js"></script>
+    <script src="js/pro-flags.js"></script>
+    <script src="js/news-widget.js"></script>
+    <script src="js/admin-app.js"></script>
+  </body>
+</html>

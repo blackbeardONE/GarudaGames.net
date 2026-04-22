@@ -53,4 +53,45 @@
         submitBtn.textContent = "Set new password";
       });
   });
+
+  // --- "Email me a reset link" form ---------------------------------------
+  var fForm = document.getElementById("forgot-form");
+  var fHandle = document.getElementById("forgot-handle");
+  var fErr = document.getElementById("forgot-error");
+  var fOk = document.getElementById("forgot-success");
+  var fBtn = fForm ? fForm.querySelector('button[type="submit"]') : null;
+
+  if (fForm) {
+    fForm.addEventListener("submit", function (e) {
+      e.preventDefault();
+      fErr.hidden = true;
+      fOk.hidden = true;
+      var handle = (fHandle.value || "").trim();
+      if (!handle) {
+        fErr.textContent = "Enter your username or email.";
+        fErr.hidden = false;
+        return;
+      }
+      fBtn.disabled = true;
+      fBtn.textContent = "Sending…";
+      window.GarudaApi
+        .forgotPassword(handle)
+        .then(function () {
+          // Server always returns 200; we never confirm or deny the
+          // account exists, so the UI mirrors that.
+          fOk.hidden = false;
+          fHandle.value = "";
+        })
+        .catch(function (err) {
+          fErr.textContent =
+            (err && err.message) ||
+            "Could not send a reset link. Try again in a moment.";
+          fErr.hidden = false;
+        })
+        .finally(function () {
+          fBtn.disabled = false;
+          fBtn.textContent = "Send reset link";
+        });
+    });
+  }
 })();

@@ -99,6 +99,11 @@
         newPassword: newPassword
       });
     },
+    forgotPassword: function (usernameOrEmail) {
+      return apiRequest("POST", "/auth/forgot-password", {
+        usernameOrEmail: usernameOrEmail
+      });
+    },
     adminIssueResetToken: function (username) {
       return apiRequest(
         "POST",

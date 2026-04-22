@@ -174,6 +174,7 @@
     var p2 = document.getElementById("signup-password2");
     var ign = document.getElementById("signup-ign");
     var rn = document.getElementById("signup-realname");
+    var em = document.getElementById("signup-email");
     var sq = document.getElementById("signup-squad");
     var gamesSel = document.getElementById("signup-games");
 
@@ -226,6 +227,13 @@
       );
     }
 
+    // Email is optional but, if supplied, must look plausible — server
+    // rejects anything that fails the stricter check too.
+    var emVal = em ? em.value.trim() : "";
+    if (emVal && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emVal)) {
+      fail(em, "That email address doesn't look valid.");
+    }
+
     // Squad: required.
     var sqVal = sq ? sq.value : "";
     if (!sqVal) {
@@ -272,6 +280,7 @@
         password: p1Val,
         ign: ignVal,
         realName: rn ? rn.value.trim() : "",
+        email: em ? em.value.trim() : "",
         squad: sqVal,
         clubRole: "Member",
         games: games,

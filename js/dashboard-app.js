@@ -287,10 +287,12 @@
     if (!user) return;
     var ign = el("profile-ign");
     var name = el("profile-realname");
+    var email = el("profile-email");
     var squad = el("profile-squad");
     var games = el("profile-games");
     if (ign) ign.value = user.ign || "";
     if (name) name.value = user.realName || "";
+    if (email) email.value = user.email || "";
     if (squad) {
       var has = false;
       for (var i = 0; i < squad.options.length; i++) {
@@ -361,6 +363,8 @@
       var status = el("profile-status");
       var ign = el("profile-ign").value.trim();
       var realName = el("profile-realname").value.trim();
+      var emailInput = el("profile-email");
+      var email = emailInput ? emailInput.value.trim() : "";
       var squad = el("profile-squad").value;
       var gamesSel = el("profile-games");
       var picked = [];
@@ -383,11 +387,16 @@
         status.textContent = "Pick at least one game.";
         return;
       }
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        status.textContent = "That email address doesn't look valid.";
+        return;
+      }
       status.textContent = "Saving…";
       window.GarudaApi
         .updateProfile({
           ign: ign,
           realName: realName,
+          email: email,
           squad: squad,
           games: picked
         })

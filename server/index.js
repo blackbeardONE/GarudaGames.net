@@ -10,6 +10,21 @@ const sanitizeHtml = require("sanitize-html");
 const qrcode = require("qrcode");
 const { db } = require("./db");
 const totp = require("./totp");
+const mailer = require("./mailer");
+
+// RFC-5322-ish email validator. Deliberately narrower than the RFC because
+// real-world delivery is what matters, not theoretical validity. Max 254
+// bytes per RFC-5321 §4.5.3.1. We lowercase for storage and comparison —
+// SMTP local-parts are technically case-sensitive but no sane provider
+// treats them as such.
+const EMAIL_RE = /^[^\s@]{1,64}@[^\s@.]+(?:\.[^\s@.]+)+$/;
+function normEmail(v) {
+  const s = String(v || "").trim().toLowerCase();
+  if (!s) return "";
+  if (s.length > 254) return "";
+  if (!EMAIL_RE.test(s)) return "";
+  return s;
+}
 
 const scryptAsync = promisify(crypto.scrypt);
 
@@ -571,6 +586,8 @@ function profileFromRow(row) {
     points: row.points || 0,
     createdAt: row.created_at,
     totpEnabled: !!row.totp_enabled,
+    email: row.email || "",
+    hasEmail: !!(row.email && String(row.email).trim()),
   };
 }
 
@@ -876,6 +893,16 @@ app.post("/api/auth/register", authLimiter, async (req, res) => {
   const realName = String(body.realName || "").trim();
   const squad = String(body.squad || "").trim();
   const clubRole = String(body.clubRole || "").trim();
+  // Email is optional. An invalid one is rejected rather than silently
+  // discarded — otherwise users who typo their address silently lose
+  // access to the self-service reset path.
+  let email = "";
+  if (body.email != null && String(body.email).trim() !== "") {
+    email = normEmail(body.email);
+    if (!email) {
+      return fail(res, 400, "That email address doesn't look valid.");
+    }
+  }
   let games = body.games;
   if (!Array.isArray(games)) games = [];
   games = games.map((g) => String(g || "").trim()).filter(Boolean);
@@ -917,8 +944,9 @@ app.post("/api/auth/register", authLimiter, async (req, res) => {
     `INSERT INTO users (
       username, password_hash, password_salt, password_kdf,
       role, ign, real_name, squad, club_role, games_json,
-      photo_data_url, certified_judge, professional_blader, points, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', 0, 0, 0, ?)`
+      photo_data_url, certified_judge, professional_blader, points, created_at,
+      email
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', 0, 0, 0, ?, ?)`
   ).run(
     username,
     hash,
@@ -930,7 +958,8 @@ app.post("/api/auth/register", authLimiter, async (req, res) => {
     squad || "Garuda Games",
     clubRole || "Member",
     JSON.stringify(games),
-    now
+    now,
+    email
   );
 
   auditLog("system", "user.register", username, {}, req.clientIp);
@@ -1225,12 +1254,156 @@ app.post(
       req.user.username,
       "admin.password_reset.issue",
       target,
-      { expiresAt },
+      { expiresAt, email: !!existing.email },
       req.clientIp
     );
-    ok(res, { token, expiresAt, expiresInMs: RESET_TOKEN_TTL_MS });
+
+    // If the target member has an email on file, also send the link.
+    // We do NOT wait for the mailer — the admin still gets the token
+    // immediately (the copy-paste fallback is canonical) and the email
+    // is best-effort.
+    let emailAttempted = false;
+    if (existing.email) {
+      emailAttempted = true;
+      mailer
+        .sendResetEmail({
+          to: existing.email,
+          username: target,
+          token,
+          issuedBy: req.user.username,
+          expiresAt,
+        })
+        .then((result) => {
+          auditLog(
+            req.user.username,
+            "admin.password_reset.email",
+            target,
+            { via: result.via, sent: !!result.sent },
+            req.clientIp
+          );
+        })
+        .catch(() => {
+          /* already audited by mailer branch */
+        });
+    }
+
+    ok(res, {
+      token,
+      expiresAt,
+      expiresInMs: RESET_TOKEN_TTL_MS,
+      emailAttempted,
+      mailerEnabled: mailer.enabled(),
+    });
   }
 );
+
+// Self-service "forgot password". A member (or anyone who can type their
+// username / email) hits this anonymously. The response is always the same
+// generic 200 — we never confirm or deny whether the account exists, which
+// prevents using this as an enumeration oracle.
+//
+// Flow when the request is legitimate:
+//   - We resolve username-or-email to a single user row.
+//   - We mint a fresh single-use token (same table the admin flow uses),
+//     invalidating any previously unissued token for the same user.
+//   - We call mailer.sendResetEmail. If SMTP isn't configured the mailer
+//     writes the link to the service journal with a LOG-ONLY tag — admins
+//     reading journalctl can still help the member.
+//   - We log the event in audit_log. We never log the token itself.
+//
+// Heavy rate limit (`authLimiter`) prevents abuse.
+app.post("/api/auth/forgot-password", authLimiter, async (req, res) => {
+  const body = req.body || {};
+  const handle = String(body.usernameOrEmail || body.identifier || "").trim();
+  // Always respond the same way regardless of what happens below. The
+  // "did we find you?" answer is deliberately invisible to the caller.
+  const GENERIC_OK = {
+    ok: true,
+    message:
+      "If that account exists and has an email on file, a reset link is on its way. If you don't receive it soon, ask an admin on Discord for a manual link.",
+  };
+  if (!handle) return res.status(200).json(GENERIC_OK);
+  if (handle.length > 254) return res.status(200).json(GENERIC_OK);
+
+  // Try email first (more specific), then username. Both lookups are
+  // case-insensitive so users aren't punished for capitalization mistakes.
+  let row = null;
+  if (handle.includes("@")) {
+    row = db
+      .prepare(
+        `SELECT * FROM users
+          WHERE email = ? COLLATE NOCASE
+          LIMIT 1`
+      )
+      .get(handle.toLowerCase());
+  }
+  if (!row) {
+    const u = normUser(handle);
+    if (u) row = getUserByUsername(u);
+  }
+
+  // Silent no-op for unknown accounts, and also for accounts with no
+  // email on file (we can't send anything). In both cases we still record
+  // a *low-severity* audit entry so unusual traffic is visible to ops.
+  if (!row || !row.email) {
+    auditLog(
+      row ? row.username : "anon",
+      "auth.forgot_password.noop",
+      null,
+      { reason: row ? "no_email" : "no_user" },
+      req.clientIp
+    );
+    return res.status(200).json(GENERIC_OK);
+  }
+
+  const now = Date.now();
+  const token = generateResetToken();
+  const expiresAt = now + RESET_TOKEN_TTL_MS;
+  const tx = db.transaction(() => {
+    db.prepare(
+      `UPDATE password_reset_tokens
+          SET used_at = ?
+        WHERE username = ? AND used_at IS NULL`
+    ).run(now, row.username);
+    db.prepare(
+      `INSERT INTO password_reset_tokens
+          (token, username, issued_by, issued_at, expires_at)
+        VALUES (?, ?, ?, ?, ?)`
+    ).run(token, row.username, row.username, now, expiresAt);
+  });
+  tx();
+
+  // Fire-and-forget the mail; we never block the response on SMTP so a
+  // slow relay can't be used to probe for valid accounts via timing.
+  mailer
+    .sendResetEmail({
+      to: row.email,
+      username: row.username,
+      token,
+      issuedBy: row.username,
+      expiresAt,
+    })
+    .then((result) => {
+      auditLog(
+        row.username,
+        "auth.forgot_password.issue",
+        null,
+        { via: result.via, sent: !!result.sent, expiresAt },
+        req.clientIp
+      );
+    })
+    .catch((err) => {
+      auditLog(
+        row.username,
+        "auth.forgot_password.issue",
+        null,
+        { via: "smtp", sent: false, error: String(err && err.message) },
+        req.clientIp
+      );
+    });
+
+  return res.status(200).json(GENERIC_OK);
+});
 
 app.post("/api/auth/reset-password", authLimiter, async (req, res) => {
   const body = req.body || {};
@@ -1494,6 +1667,21 @@ app.patch("/api/me/profile", requireAuth, (req, res) => {
   if (Array.isArray(body.games)) {
     const games = body.games.map((g) => String(g || "").trim()).filter(Boolean);
     patch.games_json = JSON.stringify(games.length ? games : ["Beyblade X"]);
+  }
+  // Members can set or clear their own email. Clearing is explicit:
+  // empty string (or null) wipes the stored value; a non-empty value
+  // must pass validation.
+  if (body.email != null) {
+    const raw = String(body.email).trim();
+    if (!raw) {
+      patch.email = "";
+    } else {
+      const e = normEmail(raw);
+      if (!e) {
+        return fail(res, 400, "That email address doesn't look valid.");
+      }
+      patch.email = e;
+    }
   }
   const keys = Object.keys(patch);
   if (!keys.length) return ok(res, { user: profileFromRow(req.user) });

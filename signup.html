@@ -137,6 +137,20 @@
             placeholder="Legal or preferred full name"
           />
 
+          <label for="signup-email">Email (optional)</label>
+          <input
+            type="email"
+            id="signup-email"
+            name="email"
+            autocomplete="email"
+            maxlength="254"
+            placeholder="you@example.com"
+          />
+          <p class="admin-hint">
+            Only used to send you a password reset link if you forget it.
+            Leave blank if you'd rather ask an admin for a manual reset.
+          </p>
+
           <label for="signup-squad">Squad</label>
           <select id="signup-squad" name="squad" required>
             <option value="" disabled selected>Select your squad</option>

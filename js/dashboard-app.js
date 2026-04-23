@@ -296,6 +296,7 @@
     if (name) name.value = user.realName || "";
     if (email) email.value = user.email || "";
     renderEmailStatus();
+    syncEmailPasswordVisibility();
     if (squad) {
       var has = false;
       for (var i = 0; i < squad.options.length; i++) {
@@ -411,16 +412,38 @@
     }
   }
 
+  // v1.11.0: the "current password" input on the profile form is only
+  // useful when the member is actually changing their email. Toggle
+  // visibility off the live value of the email input vs what we have
+  // on record — that way the field stays hidden for casual edits
+  // (IGN, squad, games) and only surfaces when the server is going to
+  // demand it.
+  function syncEmailPasswordVisibility() {
+    var emailInput = el("profile-email");
+    var wrapper = el("profile-email-password-label");
+    var pw = el("profile-email-password");
+    if (!emailInput || !wrapper || !pw) return;
+    var current = (user && user.email) || "";
+    var next = emailInput.value.trim();
+    var changed = next !== current;
+    wrapper.hidden = !changed;
+    if (!changed) pw.value = "";
+  }
+
   function bindProfileForm() {
     var form = el("form-profile");
     if (!form) return;
+    var emailInput = el("profile-email");
+    if (emailInput) {
+      emailInput.addEventListener("input", syncEmailPasswordVisibility);
+    }
     form.addEventListener("submit", function (e) {
       e.preventDefault();
       var status = el("profile-status");
       var ign = el("profile-ign").value.trim();
       var realName = el("profile-realname").value.trim();
-      var emailInput = el("profile-email");
-      var email = emailInput ? emailInput.value.trim() : "";
+      var emailEl = el("profile-email");
+      var email = emailEl ? emailEl.value.trim() : "";
       var squad = el("profile-squad").value;
       var gamesSel = el("profile-games");
       var picked = [];
@@ -447,15 +470,29 @@
         status.textContent = "That email address doesn't look valid.";
         return;
       }
+      var currentEmail = (user && user.email) || "";
+      var emailChanged = email !== currentEmail;
+      var payload = {
+        ign: ign,
+        realName: realName,
+        email: email,
+        squad: squad,
+        games: picked
+      };
+      if (emailChanged) {
+        var pw = el("profile-email-password");
+        var pwVal = pw ? pw.value : "";
+        if (!pwVal) {
+          status.textContent =
+            "Enter your current password to change the email.";
+          if (pw) pw.focus();
+          return;
+        }
+        payload.currentPassword = pwVal;
+      }
       status.textContent = "Saving…";
       window.GarudaApi
-        .updateProfile({
-          ign: ign,
-          realName: realName,
-          email: email,
-          squad: squad,
-          games: picked
-        })
+        .updateProfile(payload)
         .then(function (res) {
           user = (res && res.user) || user;
           status.textContent = "Profile updated.";

@@ -885,6 +885,25 @@ const lookupLimiter = SKIP_RATE_LIMIT
       },
     });
 
+// Dedicated cap for data export. The payload can be large and assembling
+// it hits several tables; a well-intentioned user only needs it once or
+// twice a year, a misbehaving script hammering it 1000/hour is almost
+// certainly trying to scrape. Capped per IP and — since this is a
+// cookie-gated route — effectively per session too.
+const exportLimiter = SKIP_RATE_LIMIT
+  ? passthrough
+  : rateLimit({
+      windowMs: 60 * 60 * 1000,
+      limit: 10,
+      standardHeaders: "draft-7",
+      legacyHeaders: false,
+      message: {
+        ok: false,
+        error:
+          "You've requested your data export too many times in the last hour. Try again later.",
+      },
+    });
+
 // Apply the general API limiter to everything; specific routes opt into stricter ones below.
 app.use("/api/", apiLimiter);
 
@@ -1359,6 +1378,16 @@ app.delete("/api/me/sessions/:id", requireAuth, (req, res) => {
     req.clientIp
   );
   if (isCurrent) clearCookie(res);
+  // Only mirror non-self revokes into the inbox — self-revoke kicks
+  // the cookie out from under the user, so there's nobody to read it.
+  if (!isCurrent) {
+    notifyAccountChange(
+      req.user.username,
+      "session.revoke",
+      req,
+      `Session ${target.slice(0, 8)}… was signed out.`
+    );
+  }
   ok(res, { revoked: true, isCurrent });
 });
 
@@ -1439,7 +1468,7 @@ function buildExport(username) {
   };
 }
 
-app.get("/api/me/export", requireAuth, (req, res) => {
+app.get("/api/me/export", exportLimiter, requireAuth, (req, res) => {
   const data = buildExport(req.user.username);
   if (!data) return fail(res, 500, "Could not assemble export.");
   auditLog(req.user.username, "me.export", null, {}, req.clientIp);
@@ -1625,14 +1654,46 @@ app.post("/api/me/sessions/revoke-all", requireAuth, (req, res) => {
 const RESET_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 const EMAIL_VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
 
+// v1.11.0: labels for the in-app inbox copy of a security event. We
+// keep these in lockstep with the mailer's `friendly` map so that
+// whether the member sees it on-screen or in Gmail, the wording is
+// identical.
+const SECURITY_EVENT_LABELS = {
+  "password.change": "Your password was changed",
+  "password.reset": "Your password was reset",
+  "2fa.enable": "Two-factor authentication turned on",
+  "2fa.disable": "Two-factor authentication turned off",
+  "email.change": "Your account email was changed",
+  "sessions.revoke_all": "All other sessions were signed out",
+  "session.revoke": "A session was revoked",
+};
+
 /**
  * Fire-and-forget "something changed on your account" notification.
- * Only sent when the target has a verified email on file — we
- * deliberately do NOT notify unverified addresses because that's
- * exactly the footgun v1.8.0 closed (an attacker sets a victim's
- * address, then any security event spams the victim).
+ *
+ * Always writes an in-app inbox row (v1.11.0) so the member sees the
+ * event whether or not SMTP is configured or their email is verified.
+ * The email is only sent when the recipient has a verified address on
+ * file — the v1.8.0 footgun (attacker sets a victim's address then
+ * spams them with security notices) remains closed.
  */
 function notifyAccountChange(username, event, req, detail = null) {
+  const title =
+    SECURITY_EVENT_LABELS[event] || `Security event: ${event}`;
+  const body = [
+    detail ? String(detail) : "",
+    req && req.clientIp ? `Source IP (approximate): ${req.clientIp}` : "",
+    "If this wasn't you, change your password and review your active sessions.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  // Inbox copy — best-effort, never blocks the auth operation.
+  try {
+    notify(username, "security", title, body, "dashboard.html#sessions-card");
+  } catch (_err) {
+    /* swallow */
+  }
+
   try {
     const u = getUserByUsername(username);
     if (!u || !u.email || !u.email_verified_at) return;
@@ -2223,7 +2284,7 @@ app.get("/api/auth/stats", requireAuth, (_req, res) => {
   ok(res, { memberCount: row ? row.c : 0 });
 });
 
-app.patch("/api/me/profile", requireAuth, (req, res) => {
+app.patch("/api/me/profile", requireAuth, async (req, res) => {
   const body = req.body || {};
   const patch = {};
   if (typeof body.photoDataUrl === "string") {
@@ -2280,6 +2341,40 @@ app.patch("/api/me/profile", requireAuth, (req, res) => {
       }
     }
   }
+  // v1.11.0: mutating the recovery address is a "change that can take
+  // over the account via the password-reset flow", so we force a
+  // password re-entry before we touch the row. A logged-in session
+  // with a sticky cookie should not be able to redirect recovery
+  // silently. Applies to both setting *and* clearing the address.
+  if (emailChanged) {
+    const currentPassword = String(body.currentPassword || "");
+    let good = false;
+    try {
+      good = await verifyPassword(
+        currentPassword,
+        req.user.password_salt,
+        req.user.password_hash,
+        req.user.password_kdf
+      );
+    } catch (_) {
+      good = false;
+    }
+    if (!good) {
+      auditLog(
+        req.user.username,
+        "email.change.fail",
+        null,
+        { reason: "bad_password" },
+        req.clientIp
+      );
+      return fail(
+        res,
+        401,
+        "Enter your current password to change the email on the account."
+      );
+    }
+  }
+
   const keys = Object.keys(patch);
   if (!keys.length) return ok(res, { user: profileFromRow(req.user) });
   const sets = keys.map((k) => `${k} = @${k}`).join(", ");

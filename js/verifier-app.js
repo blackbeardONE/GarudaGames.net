@@ -722,17 +722,40 @@
           ta.rows = 2;
           ta.placeholder = "Note";
           ta.className = "verif-note";
+          // v1.17.0: optional expiry picker. Default is blank ("indefinite")
+          // to match pre-v1.17.0 behaviour; most approvals will want the
+          // Renew-next-year default so we pre-fill with +365d when the
+          // verifier ticks the checkbox.
+          var expLabel = document.createElement("label");
+          expLabel.className = "verif-jlap-exp";
+          expLabel.innerHTML =
+            '<input type="checkbox" class="verif-jlap-exp-enable" /> ' +
+            '<span>Expires</span> ' +
+            '<input type="date" class="verif-jlap-exp-date" disabled />';
+          var expEnable = expLabel.querySelector(".verif-jlap-exp-enable");
+          var expDate = expLabel.querySelector(".verif-jlap-exp-date");
+          expEnable.addEventListener("change", function () {
+            expDate.disabled = !expEnable.checked;
+            if (expEnable.checked && !expDate.value) {
+              var d = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+              expDate.value = d.toISOString().slice(0, 10);
+            }
+          });
           var btnOk = document.createElement("button");
           btnOk.type = "button";
           btnOk.className = "btn btn--primary btn--sm";
           btnOk.textContent = "Verify";
           btnOk.addEventListener("click", function () {
             btnOk.disabled = true;
+            var payload = {
+              status: "verified",
+              verifierNote: ta.value.trim()
+            };
+            if (expEnable.checked && expDate.value) {
+              payload.expiresAt = expDate.value;
+            }
             window.GarudaApi
-              .reviewJlap(r.id, {
-                status: "verified",
-                verifierNote: ta.value.trim()
-              })
+              .reviewJlap(r.id, payload)
               .then(renderAll)
               .catch(function (err) {
                 alert((err && err.message) || "Could not verify.");
@@ -762,15 +785,23 @@
               });
           });
           tdAct.appendChild(ta);
+          tdAct.appendChild(expLabel);
           tdAct.appendChild(btnOk);
           tdAct.appendChild(btnNo);
         } else {
           var info = document.createElement("span");
           info.className = "verif-history-meta";
+          var expStr = "";
+          if (r.expiresAt) {
+            var expDateObj = new Date(r.expiresAt);
+            expStr = " - expires " + expDateObj.toISOString().slice(0, 10) +
+              (r.expiresAt <= Date.now() ? " (EXPIRED)" : "");
+          }
           info.textContent =
-            (r.verifiedBy ? "by " + r.verifiedBy + " ? " : "") +
+            (r.verifiedBy ? "by " + r.verifiedBy + " - " : "") +
             fmtWhen(r.verifiedAt || r.createdAt) +
-            (r.verifierNote ? " ? " + r.verifierNote : "");
+            (r.verifierNote ? " - " + r.verifierNote : "") +
+            expStr;
           tdAct.appendChild(info);
         }
         var tdU = document.createElement("td");

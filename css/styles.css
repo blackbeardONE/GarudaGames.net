@@ -3923,6 +3923,28 @@ body.admin-modal-open {
   border-color: rgba(234, 88, 12, 0.4);
 }
 
+/* v1.17.0: optional JLAP expiry picker inside the verifier row. */
+.verif-jlap-exp {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0.3rem 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.verif-jlap-exp input[type="date"] {
+  padding: 0.15rem 0.35rem;
+  font-size: 0.8rem;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.verif-jlap-exp input[type="date"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 @media (max-width: 640px) {
   .lb-member__games {
     display: none;

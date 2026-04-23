@@ -3265,6 +3265,7 @@ function mapJlap(r, opts) {
     createdAt: r.created_at,
     verifiedAt: r.verified_at,
     verifiedBy: r.verified_by,
+    expiresAt: r.expires_at == null ? null : Number(r.expires_at),
   };
   if (!opts || !opts.lite) {
     base.certificateDataUrl = cert;
@@ -3795,6 +3796,43 @@ app.patch("/api/jlap/:id", requireRole("verifier"), (req, res) => {
     return fail(res, 400, "Reject requires a verifier note.");
   }
 
+  // v1.17.0: the verifier can optionally set an expiry on approval.
+  // Accepted shapes:
+  //   - ISO string "2027-04-23"          (parsed as UTC midnight)
+  //   - epoch millis (number or numeric string in the future)
+  //   - falsy  -> null  (indefinite — matches legacy behaviour)
+  // Negative / past values are rejected so a verifier can't "approve
+  // then instantly demote" by accident. The column is only written on
+  // status=verified; rejections leave whatever was there (always null
+  // in practice since pending rows can't have expires_at either).
+  let expiresAt = null;
+  if (status === "verified" && b.expiresAt != null && b.expiresAt !== "") {
+    const raw = b.expiresAt;
+    let ms = null;
+    if (typeof raw === "number" && Number.isFinite(raw)) {
+      ms = Math.floor(raw);
+    } else if (typeof raw === "string") {
+      const trimmed = raw.trim();
+      if (/^\d+$/.test(trimmed)) {
+        ms = parseInt(trimmed, 10);
+      } else {
+        const parsed = Date.parse(trimmed);
+        if (!Number.isNaN(parsed)) ms = parsed;
+      }
+    }
+    if (ms == null || !Number.isFinite(ms)) {
+      return fail(
+        res,
+        400,
+        "expiresAt must be an ISO date string or epoch millisecond timestamp."
+      );
+    }
+    if (ms <= Date.now()) {
+      return fail(res, 400, "expiresAt must be in the future.");
+    }
+    expiresAt = ms;
+  }
+
   // Transaction boundary: the JLAP row and the user's certified_judge flag
   // flip as a single atomic unit so a crash between the two statements can
   // never leave us with a "verified" JLAP against a user who still isn't a
@@ -3804,13 +3842,16 @@ app.patch("/api/jlap/:id", requireRole("verifier"), (req, res) => {
   const tx = db.transaction(() => {
     db.prepare(
       `UPDATE jlap_submissions
-          SET status = ?, verifier_note = ?, verified_at = ?, verified_by = ?
+          SET status = ?, verifier_note = ?, verified_at = ?, verified_by = ?,
+              expires_at = CASE WHEN ? = 'verified' THEN ? ELSE expires_at END
         WHERE id = ?`
     ).run(
       status,
       note || (status === "verified" ? "JLAP verified" : ""),
       Date.now(),
       req.user.username,
+      status,
+      expiresAt,
       id
     );
     if (status === "verified") {
@@ -3831,7 +3872,7 @@ app.patch("/api/jlap/:id", requireRole("verifier"), (req, res) => {
     req.user.username,
     "jlap." + status,
     id,
-    { member: existing.username, judgeGranted },
+    { member: existing.username, judgeGranted, expiresAt },
     req.clientIp
   );
   if (judgeGranted) {

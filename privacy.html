@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Privacy Policy — Garuda Games</title>
+    <meta
+      name="description"
+      content="How Garuda Games handles your personal information."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/styles.css" />
+    <script src="js/api-client.js"></script>
+    <script src="js/site-settings.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/nav-session.js"></script>
+  </head>
+  <body>
+    <div class="noise" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <a class="brand" href="index.html#top">
+        <img
+          src="images/Garuda Transparent BG.png"
+          alt=""
+          class="brand__mark"
+          width="48"
+          height="48"
+        />
+        <span class="brand__text">Garuda Games</span>
+      </a>
+      <nav class="site-nav" aria-label="Primary">
+        <a href="index.html#top">Home</a>
+        <a href="news.html">News</a>
+        <a href="leaderboard.html">Leaderboard</a>
+        <a href="members.html">Members</a>
+      </nav>
+    </header>
+
+    <main class="legal-page" id="top">
+      <div class="legal-page__inner">
+        <h1>Privacy Policy</h1>
+        <p class="legal-page__updated">Last updated: April 22, 2026</p>
+
+        <p>
+          Garuda Games (the "club", "we", "us") is a sports and
+          e-sports community based in the Philippines. This policy
+          explains what personal information we collect when you use
+          <strong>garudagames.net</strong>, why we collect it, how we
+          store it, and the choices you have.
+        </p>
+
+        <h2>1. What we collect</h2>
+        <p>
+          When you create an account, we store the information you
+          give us: <strong>username</strong>, a salted hash of your
+          <strong>password</strong> (we never store the password
+          itself), your <strong>in-game name</strong>, <strong>squad</strong>,
+          <strong>club role</strong>, the <strong>games you play</strong>,
+          and — optionally — your <strong>real name</strong> and an
+          <strong>email address</strong> for password recovery.
+        </p>
+        <p>
+          When you use the site while signed in, we also record:
+        </p>
+        <ul>
+          <li>
+            <strong>Session metadata</strong>: the rough browser type
+            (e.g. "Chrome on Windows") and the IP address your browser
+            connected from, per sign-in, so you can review and revoke
+            your own sessions from the dashboard.
+          </li>
+          <li>
+            <strong>Activity</strong>: tournament accomplishments,
+            Judge/Professional flag requests, and anything else you
+            explicitly submit.
+          </li>
+          <li>
+            <strong>Audit log</strong>: when an admin or verifier takes
+            moderation action on your account (or you do), we log who
+            did what and when. This is a security record, not a
+            behavioural tracker.
+          </li>
+          <li>
+            <strong>Notifications</strong> we send to your in-app inbox.
+          </li>
+        </ul>
+        <p>
+          We do <strong>not</strong> use third-party analytics, ad
+          tracking, pixel beacons, or cross-site cookies. There is one
+          cookie on this site: <code>garuda_sid</code>, an
+          HttpOnly session cookie that keeps you signed in.
+        </p>
+
+        <h2>2. Why we collect it</h2>
+        <ul>
+          <li>
+            <strong>Your account and profile</strong> need identifying
+            information so you can sign in and other members can find
+            you on the leaderboard and members page.
+          </li>
+          <li>
+            <strong>Your email</strong>, if you provide one, is only
+            used for password recovery and security alerts about your
+            own account (e.g. "your password was changed"). We never
+            share it, sell it, or put it on a mailing list.
+          </li>
+          <li>
+            <strong>IP addresses and browser info</strong> are kept for
+            abuse prevention and so you can spot an unfamiliar session
+            on your account.
+          </li>
+          <li>
+            <strong>Audit logs</strong> exist so a verifier or admin
+            can answer "who approved that?" six months from now, and
+            so we can investigate account takeover attempts.
+          </li>
+        </ul>
+
+        <h2>3. How long we keep it</h2>
+        <p>
+          For as long as your account is active. When you delete your
+          account, we remove your personal data within 30 days. Audit
+          log rows that reference you are kept in anonymised form
+          (username replaced by <code>deleted_user</code>) so the
+          moderation timeline stays intact, but they no longer
+          identify you.
+        </p>
+
+        <h2>4. Who can see your data</h2>
+        <ul>
+          <li>
+            <strong>Public</strong>: your username, in-game name,
+            squad, club role, games played, and tournament
+            accomplishments that have been verified. These appear on
+            the members and leaderboard pages.
+          </li>
+          <li>
+            <strong>Signed-in members</strong>: the same public
+            information.
+          </li>
+          <li>
+            <strong>Admins and verifiers</strong>: the public fields
+            plus your pending submissions, audit trail, and the
+            presence (not the content) of an email address on file.
+          </li>
+          <li>
+            <strong>Nobody else</strong>: we do not share data with
+            third parties except for the email relay service (Brevo)
+            that delivers password-reset mail, and only when you have
+            actually requested such an email.
+          </li>
+        </ul>
+
+        <h2>5. Your rights</h2>
+        <p>
+          You can, at any time:
+        </p>
+        <ul>
+          <li>
+            <strong>Download your data.</strong> Your dashboard has an
+            <em>Export my data</em> button that returns a JSON file
+            with everything we have on file for your account.
+          </li>
+          <li>
+            <strong>Correct your data.</strong> You can edit your
+            profile fields directly in the dashboard.
+          </li>
+          <li>
+            <strong>Delete your account.</strong> The dashboard has a
+            <em>Delete my account</em> option. It requires your
+            current password (and two-factor code if enabled) and is
+            irreversible.
+          </li>
+          <li>
+            <strong>Withdraw optional data.</strong> Clearing your
+            email address from the profile form removes it entirely.
+          </li>
+        </ul>
+
+        <h2>6. Security</h2>
+        <p>
+          Passwords are hashed with scrypt. Two-factor authentication
+          is available and required for admins. All traffic runs over
+          HTTPS. See our
+          <a
+            href="https://github.com/blackbeardONE/GarudaGames.net/blob/main/SECURITY.md"
+            rel="noopener noreferrer"
+            target="_blank"
+            >public security document</a
+          >
+          for the full threat model.
+        </p>
+
+        <h2>7. Children</h2>
+        <p>
+          Garuda Games is a general-audience gaming club. We don't
+          knowingly collect personal information from anyone under 13.
+          If you believe a child under 13 has created an account,
+          please contact us on Discord and we'll delete it.
+        </p>
+
+        <h2>8. Changes to this policy</h2>
+        <p>
+          Material changes will be announced on the
+          <a href="news.html">News page</a> at least 14 days before
+          they take effect.
+        </p>
+
+        <h2>9. Contact</h2>
+        <p>
+          Questions about your data? Open a DM to an admin on our
+          <a href="https://discord.gg/dE9PWvmSYT" rel="noopener noreferrer" target="_blank"
+            >Discord server</a
+          >
+          or write to
+          <a href="mailto:no-reply@garudagames.net"
+            >no-reply@garudagames.net</a
+          >.
+        </p>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="site-footer__inner">
+        <span class="site-footer__brand">© Garuda Games</span>
+        <span class="site-footer__note">Gear Sports &amp; E-Sports club</span>
+        <span class="site-footer__links">
+          <a href="privacy.html">Privacy</a>
+          ·
+          <a href="terms.html">Terms</a>
+        </span>
+      </div>
+    </footer>
+
+    <script src="js/main.js"></script>
+  </body>
+</html>

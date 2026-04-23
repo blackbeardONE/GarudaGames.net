@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Verify your email — Garuda Games</title>
+    <meta
+      name="description"
+      content="Confirm the email address on your Garuda Games account."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/styles.css" />
+    <script src="js/api-client.js"></script>
+    <script src="js/site-settings.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/nav-session.js"></script>
+  </head>
+  <body>
+    <div class="noise" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <a class="brand" href="index.html#top">
+        <img
+          src="images/Garuda Transparent BG.png"
+          alt=""
+          class="brand__mark"
+          width="48"
+          height="48"
+        />
+        <span class="brand__text">Garuda Games</span>
+      </a>
+      <nav class="site-nav" aria-label="Primary">
+        <a href="index.html#top">Home</a>
+        <a href="leaderboard.html">Leaderboard</a>
+        <a href="members.html">Members</a>
+        <a href="news.html">News</a>
+      </nav>
+    </header>
+
+    <main class="auth-page" id="top">
+      <div class="auth-page__inner">
+        <h1 class="auth-page__title">Verify your email</h1>
+
+        <div id="verify-pending" class="auth-page__info" role="status">
+          Checking your verification link…
+        </div>
+        <div id="verify-success" class="auth-page__info" role="status" hidden>
+          <p><strong>All set.</strong> Your email is confirmed.</p>
+          <p>
+            You can now request a password reset link from
+            <a href="forgot-password.html">Reset password</a>
+            any time, without needing an admin.
+          </p>
+          <p>
+            <a class="btn btn--primary" href="dashboard.html">Go to dashboard</a>
+            &nbsp;
+            <a class="btn btn--ghost" href="login.html">Sign in</a>
+          </p>
+        </div>
+        <div id="verify-error" class="login-error" role="alert" hidden></div>
+
+        <p class="auth-page__footer">
+          <a href="dashboard.html">← Back to dashboard</a>
+        </p>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="site-footer__inner">
+        <span class="site-footer__brand">© Garuda Games</span>
+        <span class="site-footer__note">Gear Sports &amp; E-Sports club</span>
+        <span class="site-footer__links">
+          <a href="privacy.html">Privacy</a>
+          ·
+          <a href="terms.html">Terms</a>
+        </span>
+      </div>
+    </footer>
+
+    <script src="js/main.js"></script>
+    <script src="js/verify-email.js"></script>
+  </body>
+</html>

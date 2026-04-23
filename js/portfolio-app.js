@@ -339,6 +339,11 @@
         (it.isGrandTournament
           ? ' <span class="portfolio-gt">GT</span>'
           : "") +
+        (it.countsTowardRanking === false
+          ? ' <span class="portfolio-nonscoring" title="' +
+            escapeHtml(it.nonScoringReason || "Does not count toward leaderboard.") +
+            '">Non-scoring</span>'
+          : "") +
         '</td><td><span class="portfolio-gametag ' +
         gameClass(it.game) +
         '">' +

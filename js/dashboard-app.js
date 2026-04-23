@@ -1605,6 +1605,82 @@
     return "dash-status--pending";
   }
 
+  // v1.24.0 — appeal max chars, mirrored from the server (index.js
+  // MAX_APPEAL_TEXT). Keep in sync by hand; the server is the source
+  // of truth and will reject oversized submissions.
+  var MAX_APPEAL_TEXT = 500;
+
+  function appealApi(kind, id, text) {
+    if (kind === "achievement") return window.GarudaApi.appealAchievement(id, text);
+    if (kind === "jlap") return window.GarudaApi.appealJlap(id, text);
+    return window.GarudaApi.appealIdFlags(id, text);
+  }
+
+  function promptAppeal(kind, id, rowEl) {
+    var current = rowEl ? rowEl.querySelector("[data-appeal-msg]") : null;
+    if (current) current.remove();
+    var text = window.prompt(
+      "Explain why this submission should be reconsidered (max " +
+        MAX_APPEAL_TEXT +
+        " chars).\nA verifier will review your appeal and either re-open or deny it."
+    );
+    if (text == null) return; // cancelled
+    text = String(text).trim();
+    if (!text) return;
+    if (text.length > MAX_APPEAL_TEXT) {
+      window.alert(
+        "Appeal is too long (" +
+          text.length +
+          " chars). Max " +
+          MAX_APPEAL_TEXT +
+          "."
+      );
+      return;
+    }
+    appealApi(kind, id, text)
+      .then(function () {
+        window.alert(
+          "Appeal submitted. A verifier will review it and you'll receive a notification with the decision."
+        );
+        window.location.reload();
+      })
+      .catch(function (err) {
+        window.alert((err && err.message) || "Could not submit appeal.");
+      });
+  }
+
+  function actionCellForRow(r) {
+    // Appeal button only shows on a fresh rejection that hasn't been
+    // appealed yet. Pending / denied / accepted appeals show status
+    // text instead so the user knows where their appeal stands.
+    if (r.status !== "rejected") return "—";
+    if (!r.appealStatus) {
+      return (
+        '<button type="button" class="btn btn--ghost btn--small" ' +
+        'data-appeal-kind="' +
+        escapeHtml(r.appealKind) +
+        '" data-appeal-id="' +
+        escapeHtml(r.id) +
+        '">Appeal</button>'
+      );
+    }
+    if (r.appealStatus === "pending") {
+      return '<span class="dash-status dash-status--pending">Appeal pending</span>';
+    }
+    if (r.appealStatus === "accepted") {
+      // Rare: row is still rejected in the view but appeal accepted
+      // means it has been moved to pending already — render as ghost.
+      return '<span class="dash-status dash-status--ok">Re-opened</span>';
+    }
+    if (r.appealStatus === "denied") {
+      var tip = r.appealVerifierNote
+        ? ' title="' + escapeHtml(r.appealVerifierNote) + '"'
+        : "";
+      return '<span class="dash-status dash-status--bad"' + tip + ">Appeal denied</span>";
+    }
+    return "—";
+  }
+
   function renderSubmissions() {
     var tbody = el("submissions-tbody");
     if (!tbody) return;
@@ -1629,11 +1705,21 @@
           if (r.isGrandTournament) detail += ", GT";
         }
         detail += ")";
+        // v1.24.0 — Beyblade X rows below the 12-player floor are
+        // verified (portfolio) but do not score. Flag it inline so the
+        // blader doesn't think a point-free approval is a bug.
+        if (r.countsTowardRanking === false && r.status === "verified") {
+          detail += " · (does not count toward leaderboard)";
+        }
         rows.push({
+          id: r.id,
+          appealKind: "achievement",
           kind: "Achievement",
           detail: detail,
           status: r.status,
           note: r.verifierNote || "—",
+          appealStatus: r.appealStatus || "",
+          appealVerifierNote: r.appealVerifierNote || "",
           when: r.createdAt
         });
       });
@@ -1643,10 +1729,14 @@
       })
       .forEach(function (r) {
         rows.push({
+          id: r.id,
+          appealKind: "jlap",
           kind: "JLAP",
           detail: "Certificate + QR submission",
           status: r.status,
           note: r.verifierNote || "—",
+          appealStatus: r.appealStatus || "",
+          appealVerifierNote: r.appealVerifierNote || "",
           when: r.createdAt
         });
       });
@@ -1663,10 +1753,14 @@
           );
         });
         rows.push({
+          id: r.id,
+          appealKind: "idflags",
           kind: "ID flags",
           detail: parts.length ? parts.join(", ") : "No flags requested",
           status: r.status,
           note: r.verifierNote || "—",
+          appealStatus: r.appealStatus || "",
+          appealVerifierNote: r.appealVerifierNote || "",
           when: r.createdAt
         });
       });
@@ -1677,7 +1771,7 @@
     if (!rows.length) {
       var tr = document.createElement("tr");
       tr.innerHTML =
-        '<td colspan="4" class="dash-table-empty">No submissions yet.</td>';
+        '<td colspan="5" class="dash-table-empty">No submissions yet.</td>';
       tbody.appendChild(tr);
       return;
     }
@@ -1695,8 +1789,24 @@
         escapeHtml(r.status) +
         "</span></td><td>" +
         escapeHtml(r.note) +
+        "</td><td>" +
+        actionCellForRow(r) +
         "</td>";
       tbody.appendChild(tr2);
+    }
+    // Wire up Appeal buttons. Event delegation would work too, but the
+    // row list is small (<50) and rebinding on every render is cheap.
+    var buttons = tbody.querySelectorAll("[data-appeal-kind]");
+    for (var j = 0; j < buttons.length; j++) {
+      (function (btn) {
+        btn.addEventListener("click", function () {
+          promptAppeal(
+            btn.getAttribute("data-appeal-kind"),
+            btn.getAttribute("data-appeal-id"),
+            btn.closest("tr")
+          );
+        });
+      })(buttons[j]);
     }
   }
 

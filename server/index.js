@@ -161,7 +161,26 @@ function isGrandTournament(playerCount) {
   return Number(playerCount) >= 64;
 }
 
-function computeAchievementPoints(rankCode, placement, playerCount) {
+// v1.24.0 — Beyblade X tournaments must have at least this many verified
+// participants to contribute ranking points. Rows below the floor stay on
+// the blader's portfolio (they're real events they attended) but their
+// rank_points is clamped to 0 so the leaderboard isn't inflated by casual
+// 4/6/8-player meetups. Other games are unaffected and keep v1.23 scoring.
+const MIN_BEYBLADE_RANKING_PARTICIPANTS = 12;
+
+function beyxSubThreshold(game, playerCount) {
+  return (
+    (game || "Beyblade X") === "Beyblade X" &&
+    Number(playerCount) < MIN_BEYBLADE_RANKING_PARTICIPANTS
+  );
+}
+
+// v1.24.0 — the scoring engine now takes the game into account so the
+// Beyblade minimum-participant rule can clamp rank_points to 0 without
+// rejecting the submission. Older call sites that omit `game` fall back
+// to "Beyblade X" (the legacy default in the DB) so behaviour matches
+// what rows saved before v1.24 computed.
+function computeAchievementPoints(rankCode, placement, playerCount, game) {
   const meta = RANK_CODES[rankCode];
   if (!meta) return 0;
   let base = meta.base;
@@ -170,7 +189,19 @@ function computeAchievementPoints(rankCode, placement, playerCount) {
     if (p < 4) return 0;
     base = 2;
   }
+  if (beyxSubThreshold(game, playerCount)) return 0;
   return isGrandTournament(playerCount) ? base * 2 : base;
+}
+
+function nonScoringReason(game, playerCount) {
+  if (beyxSubThreshold(game, playerCount)) {
+    return (
+      "Beyblade X tournaments need at least " +
+      MIN_BEYBLADE_RANKING_PARTICIPANTS +
+      " verified participants to count toward the leaderboard. This result still appears on the blader's portfolio."
+    );
+  }
+  return "";
 }
 
 function rankDisplay(rankCode, placement) {
@@ -2962,6 +2993,8 @@ app.get("/api/portfolio/:handle", lookupLimiter, (req, res) => {
 
   const items = ach.map((r) => {
     const playerCount = r.player_count || 0;
+    const game = r.game || "Beyblade X";
+    const nonScoring = nonScoringReason(game, playerCount);
     const seasonLabel = r.event_date
       ? seasonLabelForIsoDate(r.event_date)
       : r.verified_at
@@ -2973,12 +3006,18 @@ app.get("/api/portfolio/:handle", lookupLimiter, (req, res) => {
       id: r.id,
       eventName: r.event_name,
       eventDate: r.event_date || "",
-      game: r.game || "Beyblade X",
+      game,
       rank: r.rank,
       rankCode: r.rank_code || "",
       placement: r.placement || 0,
       playerCount,
       isGrandTournament: isGrandTournament(playerCount),
+      // v1.24.0 — Beyblade X rows with <12 participants still render on
+      // the portfolio (they happened, they're part of the blader's
+      // history) but do not score. Surface the exact reason so the UI
+      // can show a clear badge instead of guessing from rankPoints=0.
+      countsTowardRanking: !nonScoring,
+      nonScoringReason: nonScoring,
       rankPoints: r.rank_points,
       challongeUrl: r.challonge_url,
       verifiedAt: r.verified_at,
@@ -3610,6 +3649,12 @@ function mapAchievement(r, opts) {
   const posterLegacy = r.poster_data_url || "";
   const posterSha = r.poster_sha256 || "";
   const posterUrl = blobUrl(posterSha);
+  const game = r.game || "Beyblade X";
+  // v1.24.0 — a verified row below the Beyblade participant floor stays
+  // on the portfolio but does NOT score. Surface this explicitly so the
+  // frontend can show a "does not count toward leaderboard" pill instead
+  // of silently hiding the row.
+  const nonScoring = nonScoringReason(game, playerCount);
   const base = {
     id: r.id,
     username: r.username,
@@ -3622,12 +3667,14 @@ function mapAchievement(r, opts) {
     // required-date feature shipped — the verifier must supply one before
     // approving (enforced in PATCH).
     eventDate: r.event_date || "",
-    game: r.game || "Beyblade X",
+    game,
     rank: r.rank,
     rankCode: r.rank_code || "",
     placement: r.placement || 0,
     playerCount,
     isGrandTournament: isGrandTournament(playerCount),
+    countsTowardRanking: !nonScoring,
+    nonScoringReason: nonScoring,
     rankPoints: r.rank_points,
     challongeUrl: r.challonge_url,
     hasPoster: !!(posterUrl || posterLegacy),
@@ -3636,6 +3683,12 @@ function mapAchievement(r, opts) {
     createdAt: r.created_at,
     verifiedAt: r.verified_at,
     verifiedBy: r.verified_by,
+    appealStatus: r.appeal_status || "",
+    appealText: r.appeal_text || "",
+    appealSubmittedAt: r.appeal_submitted_at || null,
+    appealResolvedAt: r.appeal_resolved_at || null,
+    appealResolvedBy: r.appeal_resolved_by || "",
+    appealVerifierNote: r.appeal_verifier_note || "",
   };
   // v1.23.0 — posterUrl is a short "/api/blob/<sha>" reference when
   // the row has been migrated; posterDataUrl still carries the full
@@ -3671,6 +3724,12 @@ function mapJlap(r, opts) {
     verifiedAt: r.verified_at,
     verifiedBy: r.verified_by,
     expiresAt: r.expires_at == null ? null : Number(r.expires_at),
+    appealStatus: r.appeal_status || "",
+    appealText: r.appeal_text || "",
+    appealSubmittedAt: r.appeal_submitted_at || null,
+    appealResolvedAt: r.appeal_resolved_at || null,
+    appealResolvedBy: r.appeal_resolved_by || "",
+    appealVerifierNote: r.appeal_verifier_note || "",
   };
   if (!opts || !opts.lite) {
     base.certificateUrl = certUrl;
@@ -3735,6 +3794,12 @@ function mapIdFlag(r, opts) {
     createdAt: r.created_at,
     verifiedAt: r.verified_at,
     verifiedBy: r.verified_by,
+    appealStatus: r.appeal_status || "",
+    appealText: r.appeal_text || "",
+    appealSubmittedAt: r.appeal_submitted_at || null,
+    appealResolvedAt: r.appeal_resolved_at || null,
+    appealResolvedBy: r.appeal_resolved_by || "",
+    appealVerifierNote: r.appeal_verifier_note || "",
   };
   if (opts && opts.withEvidence) {
     base.evidence = loadEvidenceForRequest(r.id, !!opts.withPhotos);
@@ -3837,7 +3902,12 @@ app.post("/api/achievements", requireAuth, (req, res) => {
     return fail(res, 400, "Player count is required (2–4096).");
   }
 
-  const rankPoints = computeAchievementPoints(rankCode, placement, playerCount);
+  const rankPoints = computeAchievementPoints(
+    rankCode,
+    placement,
+    playerCount,
+    game
+  );
   const rankLabel = rankDisplay(rankCode, placement);
 
   const pending = db
@@ -3946,11 +4016,16 @@ app.patch("/api/achievements/:id", requireRole("verifier"), (req, res) => {
   // Always recompute the point delta from the server-side scoring engine.
   // For legacy rows stored before the scoring migration (no rank_code), fall
   // back to the legacy per-label table so pending verifications still resolve.
+  // v1.24.0: scoring now also consults the tournament's game so the Beyblade
+  // X minimum-participant threshold is enforced at approval time — a late-
+  // edited player_count drop below 12 will cancel the leaderboard points
+  // without deleting the row.
   const canonicalPoints = existing.rank_code
     ? computeAchievementPoints(
         existing.rank_code,
         existing.placement,
-        existing.player_count
+        existing.player_count,
+        existing.game
       )
     : LEGACY_RANK_POINTS[existing.rank] || 0;
   const pointsDelta =
@@ -3958,10 +4033,23 @@ app.patch("/api/achievements/:id", requireRole("verifier"), (req, res) => {
       ? canonicalPoints
       : 0;
 
+  // v1.24.0 — transitions INTO status='rejected' reset the appeal
+  // fields so the blader always gets one fresh appeal per rejection
+  // cycle. Transitions to 'verified' leave the old appeal metadata
+  // intact as historical record (it already concluded with
+  // appeal_status='accepted' or similar).
+  const clearAppeal =
+    status === "rejected" && existing.status !== "rejected";
   const tx = db.transaction(() => {
     db.prepare(
       `UPDATE achievements
-          SET status = ?, rank_points = ?, verifier_note = ?, verified_at = ?, verified_by = ?, event_date = ?
+          SET status = ?, rank_points = ?, verifier_note = ?, verified_at = ?, verified_by = ?, event_date = ?,
+              appeal_text = CASE WHEN ? = 1 THEN '' ELSE appeal_text END,
+              appeal_status = CASE WHEN ? = 1 THEN '' ELSE appeal_status END,
+              appeal_submitted_at = CASE WHEN ? = 1 THEN NULL ELSE appeal_submitted_at END,
+              appeal_resolved_at = CASE WHEN ? = 1 THEN NULL ELSE appeal_resolved_at END,
+              appeal_resolved_by = CASE WHEN ? = 1 THEN '' ELSE appeal_resolved_by END,
+              appeal_verifier_note = CASE WHEN ? = 1 THEN '' ELSE appeal_verifier_note END
         WHERE id = ?`
     ).run(
       status,
@@ -3970,6 +4058,12 @@ app.patch("/api/achievements/:id", requireRole("verifier"), (req, res) => {
       Date.now(),
       req.user.username,
       eventDate,
+      clearAppeal ? 1 : 0,
+      clearAppeal ? 1 : 0,
+      clearAppeal ? 1 : 0,
+      clearAppeal ? 1 : 0,
+      clearAppeal ? 1 : 0,
+      clearAppeal ? 1 : 0,
       id
     );
     if (pointsDelta) {
@@ -4275,11 +4369,20 @@ app.patch("/api/jlap/:id", requireRole("verifier"), (req, res) => {
   // judge. The `judgeGranted` flag is read outside the transaction for
   // audit/notify side effects.
   let judgeGranted = false;
+  // v1.24.0 — see matching comment in the achievements PATCH handler.
+  const clearAppeal =
+    status === "rejected" && existing.status !== "rejected";
   const tx = db.transaction(() => {
     db.prepare(
       `UPDATE jlap_submissions
           SET status = ?, verifier_note = ?, verified_at = ?, verified_by = ?,
-              expires_at = CASE WHEN ? = 'verified' THEN ? ELSE expires_at END
+              expires_at = CASE WHEN ? = 'verified' THEN ? ELSE expires_at END,
+              appeal_text = CASE WHEN ? = 1 THEN '' ELSE appeal_text END,
+              appeal_status = CASE WHEN ? = 1 THEN '' ELSE appeal_status END,
+              appeal_submitted_at = CASE WHEN ? = 1 THEN NULL ELSE appeal_submitted_at END,
+              appeal_resolved_at = CASE WHEN ? = 1 THEN NULL ELSE appeal_resolved_at END,
+              appeal_resolved_by = CASE WHEN ? = 1 THEN '' ELSE appeal_resolved_by END,
+              appeal_verifier_note = CASE WHEN ? = 1 THEN '' ELSE appeal_verifier_note END
         WHERE id = ?`
     ).run(
       status,
@@ -4288,6 +4391,12 @@ app.patch("/api/jlap/:id", requireRole("verifier"), (req, res) => {
       req.user.username,
       status,
       expiresAt,
+      clearAppeal ? 1 : 0,
+      clearAppeal ? 1 : 0,
+      clearAppeal ? 1 : 0,
+      clearAppeal ? 1 : 0,
+      clearAppeal ? 1 : 0,
+      clearAppeal ? 1 : 0,
       id
     );
     if (status === "verified") {
@@ -4578,16 +4687,31 @@ app.patch("/api/id-flags/:id", requireRole("verifier"), (req, res) => {
     return fail(res, 400, "Reject requires a verifier note.");
   }
 
+  // v1.24.0 — see matching comment in the achievements PATCH handler.
+  const clearAppeal =
+    status === "rejected" && existing.status !== "rejected";
   const tx = db.transaction(() => {
     db.prepare(
       `UPDATE id_flag_requests
-          SET status = ?, verifier_note = ?, verified_at = ?, verified_by = ?
+          SET status = ?, verifier_note = ?, verified_at = ?, verified_by = ?,
+              appeal_text = CASE WHEN ? = 1 THEN '' ELSE appeal_text END,
+              appeal_status = CASE WHEN ? = 1 THEN '' ELSE appeal_status END,
+              appeal_submitted_at = CASE WHEN ? = 1 THEN NULL ELSE appeal_submitted_at END,
+              appeal_resolved_at = CASE WHEN ? = 1 THEN NULL ELSE appeal_resolved_at END,
+              appeal_resolved_by = CASE WHEN ? = 1 THEN '' ELSE appeal_resolved_by END,
+              appeal_verifier_note = CASE WHEN ? = 1 THEN '' ELSE appeal_verifier_note END
         WHERE id = ?`
     ).run(
       status,
       note || "Approved",
       Date.now(),
       req.user.username,
+      clearAppeal ? 1 : 0,
+      clearAppeal ? 1 : 0,
+      clearAppeal ? 1 : 0,
+      clearAppeal ? 1 : 0,
+      clearAppeal ? 1 : 0,
+      clearAppeal ? 1 : 0,
       id
     );
     if (status === "verified") {
@@ -4651,6 +4775,313 @@ app.patch("/api/id-flags/:id", requireRole("verifier"), (req, res) => {
     .prepare(`SELECT * FROM id_flag_requests WHERE id = ?`)
     .get(id);
   ok(res, { request: mapIdFlag(updated, { withEvidence: true }) });
+});
+
+// --------------------------------------------------------------------------
+// v1.24.0 — Appeal lifecycle (user) + resolve (verifier)
+//
+// A blader gets ONE appeal per rejection cycle on achievement / JLAP /
+// ID-flag submissions. They write up to MAX_APPEAL_TEXT chars explaining
+// why they think the rejection was wrong; the row stays status='rejected'
+// while appeal_status='pending' so the main verifier queue isn't
+// polluted. A separate /api/admin/appeals feed lists them for staff.
+//
+// A verifier can then:
+//   - accept -> row flips to 'pending', appeal_status='accepted',
+//               the submission re-enters the main verifier queue.
+//   - deny   -> row stays 'rejected', appeal_status='denied'. Terminal.
+//
+// On any subsequent transition INTO 'rejected' (fresh rejection after a
+// previous accept), the three PATCH handlers zero out appeal_* so the
+// blader gets a new appeal attempt. That reset is what limits spam: a
+// denied appeal is permanent for that rejection cycle.
+// --------------------------------------------------------------------------
+
+const MAX_APPEAL_TEXT = 500;
+const APPEAL_COOLDOWN_MS = 60 * 1000; // 60s after rejection before appealing
+const APPEAL_RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
+const APPEAL_RATE_LIMIT_MAX = 5;
+
+const APPEAL_HOSTS = {
+  achievement: {
+    table: "achievements",
+    label: "achievement",
+    notifKind: "achievement",
+    link: "dashboard.html",
+    titleForUser: (row) => 'Your result "' + row.event_name + '"',
+    selectForVerifier: `SELECT a.*, u.ign AS user_ign
+         FROM achievements a
+         LEFT JOIN users u ON u.username = a.username
+        WHERE a.id = ?`,
+    remap: (row) => mapAchievement(row),
+    onAccept: null,
+  },
+  jlap: {
+    table: "jlap_submissions",
+    label: "JLAP submission",
+    notifKind: "jlap",
+    link: "dashboard.html",
+    titleForUser: () => "Your JLAP submission",
+    selectForVerifier: `SELECT j.*, u.ign AS user_ign
+         FROM jlap_submissions j
+         LEFT JOIN users u ON u.username = j.username
+        WHERE j.id = ?`,
+    remap: (row) => mapJlap(row),
+    onAccept: null,
+  },
+  idflags: {
+    table: "id_flag_requests",
+    label: "ID flags request",
+    notifKind: "idflags",
+    link: "dashboard.html",
+    titleForUser: () => "Your ID flags request",
+    selectForVerifier: `SELECT r.*, u.ign AS user_ign
+         FROM id_flag_requests r
+         LEFT JOIN users u ON u.username = r.username
+        WHERE r.id = ?`,
+    remap: (row) => mapIdFlag(row, { withEvidence: true }),
+    onAccept: null,
+  },
+};
+
+function countRecentAppealsByUser(username) {
+  const since = Date.now() - APPEAL_RATE_LIMIT_WINDOW_MS;
+  const q = (table) =>
+    db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM ${table}
+          WHERE username = ? AND appeal_submitted_at IS NOT NULL AND appeal_submitted_at >= ?`
+      )
+      .get(username, since).c;
+  return q("achievements") + q("jlap_submissions") + q("id_flag_requests");
+}
+
+function fileAppeal(req, res, hostKey) {
+  const host = APPEAL_HOSTS[hostKey];
+  if (!host) return fail(res, 400, "Unknown submission type.");
+  const id = req.params.id;
+  const b = req.body || {};
+  const text = typeof b.appealText === "string" ? b.appealText.trim() : "";
+  if (!text) return fail(res, 400, "Appeal text is required.");
+  if (text.length > MAX_APPEAL_TEXT) {
+    return fail(res, 400, "Appeal text is too long (max " + MAX_APPEAL_TEXT + " chars).");
+  }
+
+  const row = db.prepare(`SELECT * FROM ${host.table} WHERE id = ?`).get(id);
+  if (!row) return fail(res, 404, "Not found.");
+  if (row.username !== req.user.username) {
+    return fail(res, 403, "You can only appeal your own submissions.");
+  }
+  if (row.status !== "rejected") {
+    return fail(res, 409, "Only rejected submissions can be appealed.");
+  }
+  if (row.appeal_status) {
+    return fail(
+      res,
+      409,
+      row.appeal_status === "pending"
+        ? "You already have a pending appeal on this submission."
+        : "This rejection has already been appealed once and the decision is final."
+    );
+  }
+  // Cooldown: verifier note needs a moment to sink in before the user
+  // fires back. Also stops accidental double-clicks on the appeal button.
+  const rejectedAt = row.verified_at || row.created_at || 0;
+  if (rejectedAt && Date.now() - rejectedAt < APPEAL_COOLDOWN_MS) {
+    return fail(
+      res,
+      429,
+      "Please wait a moment before submitting your appeal."
+    );
+  }
+  if (countRecentAppealsByUser(req.user.username) >= APPEAL_RATE_LIMIT_MAX) {
+    return fail(
+      res,
+      429,
+      "You have filed the maximum number of appeals allowed in 24 hours."
+    );
+  }
+
+  const now = Date.now();
+  db.prepare(
+    `UPDATE ${host.table}
+        SET appeal_text = ?, appeal_status = 'pending',
+            appeal_submitted_at = ?,
+            appeal_resolved_at = NULL, appeal_resolved_by = '',
+            appeal_verifier_note = ''
+      WHERE id = ?`
+  ).run(text, now, id);
+
+  auditLog(
+    req.user.username,
+    hostKey + ".appeal.filed",
+    id,
+    { chars: text.length },
+    req.clientIp
+  );
+
+  const fresh = db.prepare(`SELECT * FROM ${host.table} WHERE id = ?`).get(id);
+  ok(res, { [hostKey === "idflags" ? "request" : hostKey]: host.remap(fresh) });
+}
+
+function resolveAppeal(req, res, hostKey) {
+  const host = APPEAL_HOSTS[hostKey];
+  if (!host) return fail(res, 400, "Unknown submission type.");
+  const id = req.params.id;
+  const b = req.body || {};
+  const action = b.action === "accept" || b.action === "deny" ? b.action : null;
+  if (!action) return fail(res, 400, "action must be 'accept' or 'deny'.");
+  const note = typeof b.verifierNote === "string"
+    ? b.verifierNote.trim().slice(0, 1000)
+    : "";
+  if (action === "deny" && !note) {
+    return fail(res, 400, "Denying an appeal requires a verifier note explaining why.");
+  }
+
+  const row = db.prepare(`SELECT * FROM ${host.table} WHERE id = ?`).get(id);
+  if (!row) return fail(res, 404, "Not found.");
+  if (row.appeal_status !== "pending") {
+    return fail(res, 409, "This submission has no pending appeal.");
+  }
+  if (row.username === req.user.username) {
+    return fail(res, 403, "You can't resolve an appeal on your own submission.");
+  }
+
+  const now = Date.now();
+  if (action === "accept") {
+    // Row flips back to 'pending'. verified_at / verified_by are
+    // cleared so the main verifier UI doesn't pretend this row was
+    // already reviewed — it needs a fresh look. rank_points already
+    // accounts for the rejection (was zeroed on the original PATCH).
+    db.prepare(
+      `UPDATE ${host.table}
+          SET status = 'pending',
+              verified_at = NULL,
+              verified_by = NULL,
+              appeal_status = 'accepted',
+              appeal_resolved_at = ?,
+              appeal_resolved_by = ?,
+              appeal_verifier_note = ?
+        WHERE id = ?`
+    ).run(now, req.user.username, note, id);
+  } else {
+    db.prepare(
+      `UPDATE ${host.table}
+          SET appeal_status = 'denied',
+              appeal_resolved_at = ?,
+              appeal_resolved_by = ?,
+              appeal_verifier_note = ?
+        WHERE id = ?`
+    ).run(now, req.user.username, note, id);
+  }
+
+  auditLog(
+    req.user.username,
+    hostKey + ".appeal." + action,
+    id,
+    { member: row.username },
+    req.clientIp
+  );
+
+  // User-facing inbox nudge. Verifier note is included on deny because
+  // the user deserves to know why the appeal didn't carry.
+  if (action === "accept") {
+    notify(
+      row.username,
+      host.notifKind,
+      host.label.charAt(0).toUpperCase() + host.label.slice(1) + " appeal accepted",
+      host.titleForUser(row) +
+        " has been re-opened for review by " +
+        req.user.username +
+        ". It is now back in the verifier queue.",
+      host.link
+    );
+  } else {
+    notify(
+      row.username,
+      host.notifKind,
+      host.label.charAt(0).toUpperCase() + host.label.slice(1) + " appeal denied",
+      host.titleForUser(row) +
+        " appeal was denied by " +
+        req.user.username +
+        (note ? ". Note: " + note : "."),
+      host.link
+    );
+  }
+
+  if (action === "accept") bumpLeaderboardVersion();
+
+  const fresh = db.prepare(host.selectForVerifier).get(id);
+  ok(res, { [hostKey === "idflags" ? "request" : hostKey]: host.remap(fresh) });
+}
+
+app.post("/api/achievements/:id/appeal", requireAuth, (req, res) =>
+  fileAppeal(req, res, "achievement")
+);
+app.post("/api/jlap/:id/appeal", requireAuth, (req, res) =>
+  fileAppeal(req, res, "jlap")
+);
+app.post("/api/id-flags/:id/appeal", requireAuth, (req, res) =>
+  fileAppeal(req, res, "idflags")
+);
+
+app.post(
+  "/api/admin/achievements/:id/appeal/resolve",
+  requireRole("verifier"),
+  (req, res) => resolveAppeal(req, res, "achievement")
+);
+app.post(
+  "/api/admin/jlap/:id/appeal/resolve",
+  requireRole("verifier"),
+  (req, res) => resolveAppeal(req, res, "jlap")
+);
+app.post(
+  "/api/admin/id-flags/:id/appeal/resolve",
+  requireRole("verifier"),
+  (req, res) => resolveAppeal(req, res, "idflags")
+);
+
+// Verifier-facing feed of all pending appeals across submission types.
+// Slim payload: enough to render a "N appeals waiting" badge and the
+// appeal-queue table. The single-record PATCH / resolve endpoints load
+// full detail when staff clicks through.
+app.get("/api/admin/appeals", requireRole("verifier"), (_req, res) => {
+  const ach = db
+    .prepare(
+      `SELECT a.*, u.ign AS user_ign
+         FROM achievements a
+         LEFT JOIN users u ON u.username = a.username
+        WHERE a.appeal_status = 'pending'
+        ORDER BY a.appeal_submitted_at ASC`
+    )
+    .all()
+    .map((r) => mapAchievement(r));
+  const jlaps = db
+    .prepare(
+      `SELECT j.*, u.ign AS user_ign
+         FROM jlap_submissions j
+         LEFT JOIN users u ON u.username = j.username
+        WHERE j.appeal_status = 'pending'
+        ORDER BY j.appeal_submitted_at ASC`
+    )
+    .all()
+    .map((r) => mapJlap(r));
+  const idfs = db
+    .prepare(
+      `SELECT r.*, u.ign AS user_ign
+         FROM id_flag_requests r
+         LEFT JOIN users u ON u.username = r.username
+        WHERE r.appeal_status = 'pending'
+        ORDER BY r.appeal_submitted_at ASC`
+    )
+    .all()
+    .map((r) => mapIdFlag(r));
+  ok(res, {
+    achievements: ach,
+    jlap: jlaps,
+    idFlags: idfs,
+    total: ach.length + jlaps.length + idfs.length,
+  });
 });
 
 // --------------------------------------------------------------------------

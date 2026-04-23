@@ -178,9 +178,141 @@
   }
 
   function renderAll() {
-    return Promise.all([renderAch(), renderIdFlags(), renderJlap()]).then(
-      renderOverview
-    );
+    return Promise.all([
+      renderAch(),
+      renderIdFlags(),
+      renderJlap(),
+      renderAppeals(),
+    ]).then(renderOverview);
+  }
+
+  // v1.24.0 — pending appeals queue (achievements + JLAP + ID flags).
+  function renderAppeals() {
+    var tbody = el("verif-appeals-tbody");
+    if (!tbody) return Promise.resolve();
+    tbody.innerHTML =
+      '<tr><td colspan="6" class="dash-table-empty">Loading…</td></tr>';
+    var badge = el("vstat-pend-appeals");
+    return window.GarudaApi
+      .listPendingAppeals()
+      .then(function (res) {
+        var rows = [];
+        (res.achievements || []).forEach(function (r) {
+          rows.push({
+            kind: "achievement",
+            when: r.appealSubmittedAt,
+            typeLabel: "Achievement",
+            member: bladerName(r),
+            detail:
+              r.eventName +
+              " · " +
+              r.rank +
+              (r.eventDate ? " (" + r.eventDate + ")" : ""),
+            verifierNote: r.verifierNote || "",
+            appealText: r.appealText,
+            id: r.id,
+          });
+        });
+        (res.jlap || []).forEach(function (r) {
+          rows.push({
+            kind: "jlap",
+            when: r.appealSubmittedAt,
+            typeLabel: "JLAP",
+            member: bladerName(r),
+            detail: "Certificate + QR",
+            verifierNote: r.verifierNote || "",
+            appealText: r.appealText,
+            id: r.id,
+          });
+        });
+        (res.idFlags || []).forEach(function (r) {
+          var parts = [];
+          if (r.certifiedJudge) parts.push("Certified Judge");
+          (r.proGames || []).forEach(function (g) {
+            parts.push(window.ProFlags ? window.ProFlags.label(g) : "PRO " + g);
+          });
+          rows.push({
+            kind: "idflags",
+            when: r.appealSubmittedAt,
+            typeLabel: "ID flags",
+            member: bladerName(r),
+            detail: parts.length ? parts.join(", ") : "—",
+            verifierNote: r.verifierNote || "",
+            appealText: r.appealText,
+            id: r.id,
+          });
+        });
+        rows.sort(function (a, b) {
+          return (a.when || 0) - (b.when || 0);
+        });
+        if (badge) badge.textContent = String(rows.length);
+        if (!rows.length) {
+          tbody.innerHTML =
+            '<tr><td colspan="6" class="dash-table-empty">No pending appeals.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = "";
+        rows.forEach(function (r) {
+          var tr = document.createElement("tr");
+          tr.innerHTML =
+            "<td>" +
+            esc(fmtWhen(r.when)) +
+            "</td><td>" +
+            esc(r.typeLabel) +
+            "</td><td>" +
+            esc(r.member) +
+            "</td><td>" +
+            esc(r.detail) +
+            (r.verifierNote
+              ? '<br><small class="dash-hint">Rejected: ' +
+                esc(r.verifierNote) +
+                "</small>"
+              : "") +
+            '</td><td><pre class="verif-appeal-text">' +
+            esc(r.appealText) +
+            "</pre></td><td>" +
+            '<button type="button" class="btn btn--primary btn--small" data-appeal-accept>Accept</button> ' +
+            '<button type="button" class="btn btn--ghost btn--small" data-appeal-deny>Deny</button>' +
+            "</td>";
+          var accept = tr.querySelector("[data-appeal-accept]");
+          var deny = tr.querySelector("[data-appeal-deny]");
+          accept.addEventListener("click", function () {
+            var note = window.prompt(
+              "Optional note to the member on accepting this appeal:",
+              ""
+            );
+            if (note === null) return;
+            window.GarudaApi
+              .resolveAppeal(r.kind, r.id, "accept", note || "")
+              .then(renderAll)
+              .catch(function (err) {
+                alert((err && err.message) || "Could not accept appeal.");
+              });
+          });
+          deny.addEventListener("click", function () {
+            var note = window.prompt(
+              "Reason for denying this appeal (shown to the member, required):",
+              ""
+            );
+            if (note === null) return;
+            if (!note.trim()) {
+              alert("A verifier note is required when denying an appeal.");
+              return;
+            }
+            window.GarudaApi
+              .resolveAppeal(r.kind, r.id, "deny", note.trim())
+              .then(renderAll)
+              .catch(function (err) {
+                alert((err && err.message) || "Could not deny appeal.");
+              });
+          });
+          tbody.appendChild(tr);
+        });
+      })
+      .catch(function () {
+        tbody.innerHTML =
+          '<tr><td colspan="6" class="dash-table-empty">Could not load appeals.</td></tr>';
+      });
   }
 
   function fmtWhen(ts) {

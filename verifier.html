@@ -126,6 +126,11 @@
                 id="vstat-missing-date-link"
               >Backfill queue →</a>
             </article>
+            <article class="stats-card stats-card--warn">
+              <span class="stats-card__label">Pending appeals</span>
+              <strong class="stats-card__value" id="vstat-pend-appeals">—</strong>
+              <a class="stats-card__sub stats-card__link" href="#vq-appeals">Appeal queue →</a>
+            </article>
           </div>
 
           <div class="overview-block">
@@ -200,6 +205,29 @@
                 </tr>
               </thead>
               <tbody id="verif-idflags-tbody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="dash-card" aria-labelledby="vq-appeals">
+          <h2 id="vq-appeals" class="dash-card__title">Rejection appeals</h2>
+          <p class="dash-card__hint">
+            Members get one appeal per rejection. Accepting re-opens the
+            submission for a fresh review; denying is final for that cycle.
+          </p>
+          <div class="dash-table-wrap">
+            <table class="dash-table">
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>Type</th>
+                  <th>Member</th>
+                  <th>Detail</th>
+                  <th>Appeal text</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="verif-appeals-tbody"></tbody>
             </table>
           </div>
         </section>

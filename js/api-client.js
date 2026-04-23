@@ -248,6 +248,47 @@
       return apiRequest("PATCH", "/id-flags/" + encodeURIComponent(id), patch);
     },
 
+    // v1.24.0 — rejected-submission appeals. The member posts their
+    // 500-char explanation; the verifier either accepts (row returns
+    // to the main queue) or denies (terminal for that rejection).
+    appealAchievement: function (id, text) {
+      return apiRequest(
+        "POST",
+        "/achievements/" + encodeURIComponent(id) + "/appeal",
+        { appealText: text }
+      );
+    },
+    appealJlap: function (id, text) {
+      return apiRequest(
+        "POST",
+        "/jlap/" + encodeURIComponent(id) + "/appeal",
+        { appealText: text }
+      );
+    },
+    appealIdFlags: function (id, text) {
+      return apiRequest(
+        "POST",
+        "/id-flags/" + encodeURIComponent(id) + "/appeal",
+        { appealText: text }
+      );
+    },
+    listPendingAppeals: function () {
+      return apiRequest("GET", "/admin/appeals");
+    },
+    resolveAppeal: function (kind, id, action, verifierNote) {
+      var path =
+        kind === "achievement"
+          ? "/admin/achievements/"
+          : kind === "jlap"
+          ? "/admin/jlap/"
+          : "/admin/id-flags/";
+      return apiRequest(
+        "POST",
+        path + encodeURIComponent(id) + "/appeal/resolve",
+        { action: action, verifierNote: verifierNote || "" }
+      );
+    },
+
     listNews: function (opts) {
       var params = [];
       if (opts && opts.limit) {

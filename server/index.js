@@ -719,8 +719,60 @@ let CACHE_ENABLED = process.env.GARUDA_LEADERBOARD_CACHE !== "0";
 let leaderboardVersion = 1;
 const leaderboardCache = new Map(); // key -> { etag, body, version, fetchedAt }
 
+// v1.22.0 — simple cache hit/miss/304 counters, exposed via
+// `GET /api/admin/cache-stats` so we can confirm the 30s TTL is
+// actually saving work in production. Counters are process-local (not
+// persisted) and reset whenever `resetLeaderboardStats()` is called;
+// we also record a `since` marker so the admin UI can show a rate per
+// unit of uptime without knowing about process restarts.
+const leaderboardStats = {
+  since: Date.now(),
+  hits: 0,
+  misses: 0,
+  conditional: 0, // total If-None-Match requests seen
+  notModified: 0, // subset of conditional that matched -> 304
+  bypass: 0, // served with cache disabled
+  versionBumps: 0,
+  lastMutationAt: 0,
+};
+
+function resetLeaderboardStats() {
+  leaderboardStats.since = Date.now();
+  leaderboardStats.hits = 0;
+  leaderboardStats.misses = 0;
+  leaderboardStats.conditional = 0;
+  leaderboardStats.notModified = 0;
+  leaderboardStats.bypass = 0;
+  leaderboardStats.versionBumps = 0;
+  leaderboardStats.lastMutationAt = 0;
+}
+
+function snapshotLeaderboardStats() {
+  const s = leaderboardStats;
+  const total = s.hits + s.misses;
+  const rate = total > 0 ? s.hits / total : 0;
+  return {
+    enabled: CACHE_ENABLED,
+    ttlMs: CACHE_TTL_MS,
+    since: s.since,
+    uptimeMs: Date.now() - s.since,
+    hits: s.hits,
+    misses: s.misses,
+    conditional: s.conditional,
+    notModified: s.notModified,
+    bypass: s.bypass,
+    versionBumps: s.versionBumps,
+    lastMutationAt: s.lastMutationAt || null,
+    hitRate: Number(rate.toFixed(4)),
+    slots: leaderboardCache.size,
+    currentVersion: leaderboardVersion,
+  };
+}
+
 function bumpLeaderboardVersion() {
   leaderboardVersion++;
+  leaderboardStats.versionBumps++;
+  leaderboardStats.lastMutationAt = Date.now();
   // Don't clear the Map — stale entries are harmless (ETag mismatches on
   // read) and the TTL sweep will evict them. Clearing would thrash under
   // a burst of verifier activity.
@@ -735,6 +787,7 @@ function leaderboardEtag(version, key) {
 
 function serveLeaderboard(req, res, cacheKey, compute) {
   if (!CACHE_ENABLED) {
+    leaderboardStats.bypass++;
     res.set("Cache-Control", "no-store");
     return ok(res, compute());
   }
@@ -749,6 +802,7 @@ function serveLeaderboard(req, res, cacheKey, compute) {
   if (fresh) {
     etag = cached.etag;
     body = cached.body;
+    leaderboardStats.hits++;
   } else {
     body = compute();
     etag = leaderboardEtag(leaderboardVersion, cacheKey);
@@ -758,6 +812,7 @@ function serveLeaderboard(req, res, cacheKey, compute) {
       version: leaderboardVersion,
       fetchedAt: now,
     });
+    leaderboardStats.misses++;
     // Trim if the map grew unreasonably — we don't expect more than a
     // few dozen distinct (game, season) combos.
     if (leaderboardCache.size > 128) {
@@ -771,8 +826,12 @@ function serveLeaderboard(req, res, cacheKey, compute) {
   res.set("Cache-Control", "public, max-age=30, must-revalidate");
   res.set("Vary", "Cookie"); // be defensive: sessions don't change the body, but proxies shouldn't assume
   const inm = req.headers["if-none-match"];
-  if (inm && inm === etag) {
-    return res.status(304).end();
+  if (inm) {
+    leaderboardStats.conditional++;
+    if (inm === etag) {
+      leaderboardStats.notModified++;
+      return res.status(304).end();
+    }
   }
   return ok(res, body);
 }
@@ -780,6 +839,7 @@ function serveLeaderboard(req, res, cacheKey, compute) {
 function __resetLeaderboardCacheForTests() {
   leaderboardVersion = 1;
   leaderboardCache.clear();
+  resetLeaderboardStats();
 }
 
 function normUser(u) {
@@ -5173,6 +5233,31 @@ function staff2faNudgeSendEmail(username, logger = console) {
     .catch(() => ({ sent: false }));
 }
 
+// v1.22.0 — cache-stats endpoint. Read-only, admin-only. Adds a
+// `?reset=1` query option that also zeroes the counters (audit-logged
+// so a drive-by refresh can't hide a spike in misses).
+app.get("/api/admin/cache-stats", requireRole("admin"), (req, res) => {
+  const wantsReset = String(req.query && req.query.reset) === "1";
+  const before = snapshotLeaderboardStats();
+  if (wantsReset) {
+    resetLeaderboardStats();
+    auditLog(
+      req.user.username,
+      "admin.cache-stats.reset",
+      "leaderboard",
+      {
+        priorHits: before.hits,
+        priorMisses: before.misses,
+        priorNotModified: before.notModified,
+        uptimeMs: before.uptimeMs,
+      },
+      req.clientIp
+    );
+    return ok(res, { stats: snapshotLeaderboardStats(), reset: true, priorStats: before });
+  }
+  return ok(res, { stats: before, reset: false });
+});
+
 app.get(
   "/api/admin/staff-2fa-status",
   requireRole("admin"),
@@ -5910,4 +5995,5 @@ module.exports = {
   __setLeaderboardCacheEnabledForTests: (v) => {
     CACHE_ENABLED = !!v;
   },
+  __snapshotLeaderboardStatsForTests: snapshotLeaderboardStats,
 };

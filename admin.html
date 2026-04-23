@@ -79,6 +79,7 @@
             <a class="btn btn--ghost btn--sm" href="verifier.html">Verifier queue</a>
             <a class="btn btn--ghost btn--sm" href="#adm-m">Members</a>
             <a class="btn btn--ghost btn--sm" href="#adm-2fa">Staff 2FA</a>
+            <a class="btn btn--ghost btn--sm" href="#adm-cache">Cache stats</a>
             <a class="btn btn--ghost btn--sm" href="#adm-s">Site settings</a>
             <a class="btn btn--ghost btn--sm" href="news.html">News &amp; updates</a>
             <button type="button" class="btn btn--ghost btn--sm" id="admin-export-top">Export backup</button>
@@ -222,6 +223,71 @@
                 <tr><td colspan="8" class="dash-table-empty">Loading…</td></tr>
               </tbody>
             </table>
+          </div>
+        </section>
+
+        <section
+          class="dash-card admin-cache-stats"
+          id="adm-cache-card"
+          aria-labelledby="adm-cache"
+        >
+          <div class="admin-cache-stats__header">
+            <h2 id="adm-cache" class="dash-card__title">Leaderboard cache stats</h2>
+            <span
+              class="admin-cache-stats__status"
+              id="adm-cache-status-pill"
+              >—</span
+            >
+          </div>
+          <p class="dash-card__hint" id="adm-cache-hint">
+            Hit-rate and 304 counters for <code>/api/leaderboard</code> and
+            <code>/api/verifiers/leaderboard</code>. Counters are
+            process-local and reset on every API restart. Shipped in
+            v1.22.0.
+          </p>
+          <div class="stats-grid">
+            <div class="stats-card">
+              <span class="stats-card__label">Hit rate</span>
+              <strong class="stats-card__value" id="adm-cache-rate">—</strong>
+              <span class="stats-card__sub" id="adm-cache-rate-sub">&nbsp;</span>
+            </div>
+            <div class="stats-card">
+              <span class="stats-card__label">Hits / Misses</span>
+              <strong class="stats-card__value" id="adm-cache-hm">—</strong>
+              <span class="stats-card__sub" id="adm-cache-hm-sub">&nbsp;</span>
+            </div>
+            <div class="stats-card">
+              <span class="stats-card__label">304 responses</span>
+              <strong class="stats-card__value" id="adm-cache-304">—</strong>
+              <span class="stats-card__sub" id="adm-cache-304-sub">&nbsp;</span>
+            </div>
+            <div class="stats-card">
+              <span class="stats-card__label">Invalidations</span>
+              <strong class="stats-card__value" id="adm-cache-bumps">—</strong>
+              <span class="stats-card__sub" id="adm-cache-bumps-sub">&nbsp;</span>
+            </div>
+          </div>
+          <div class="admin-cache-stats__footer">
+            <button
+              type="button"
+              class="btn btn--ghost btn--sm"
+              id="adm-cache-refresh"
+            >
+              Refresh
+            </button>
+            <button
+              type="button"
+              class="btn btn--ghost btn--sm"
+              id="adm-cache-reset"
+            >
+              Reset counters
+            </button>
+            <span
+              class="admin-cache-stats__meta"
+              id="adm-cache-meta"
+              aria-live="polite"
+              >&nbsp;</span
+            >
           </div>
         </section>
 

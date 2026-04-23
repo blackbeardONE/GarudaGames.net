@@ -325,6 +325,10 @@
     },
     adminStaff2faNudge: function (target) {
       return apiRequest("POST", "/admin/staff-2fa-nudge", { target: target });
+    },
+    adminCacheStats: function (opts) {
+      var qs = opts && opts.reset ? "?reset=1" : "";
+      return apiRequest("GET", "/admin/cache-stats" + qs);
     }
   };
 })();

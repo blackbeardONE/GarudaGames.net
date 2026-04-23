@@ -38,6 +38,8 @@
       renderOverview();
       renderMembers();
       renderStaff2fa();
+      renderCacheStats();
+      bindCacheStatsControls();
       loadSiteForm();
       bindAddMember();
       bindSaveSite();
@@ -1896,6 +1898,163 @@
             });
         });
       })(btns[i]);
+    }
+  }
+
+  // v1.22.0 — cache stats tile. Polls once on mount, manual refresh on
+  // demand via the button, and offers a "reset counters" action that
+  // the server audit-logs. We don't auto-refresh on a timer because
+  // admins typically visit this page, glance, and leave — a live
+  // ticker would be overkill and drain the scheduler budget.
+  function humanPct(rate) {
+    if (!isFinite(rate)) return "—";
+    return (rate * 100).toFixed(1) + "%";
+  }
+
+  function humanUptime(ms) {
+    if (!ms || ms < 0) return "0s";
+    var s = Math.floor(ms / 1000);
+    if (s < 60) return s + "s";
+    var m = Math.floor(s / 60);
+    if (m < 60) return m + "m";
+    var h = Math.floor(m / 60);
+    if (h < 24) return h + "h " + (m % 60) + "m";
+    var d = Math.floor(h / 24);
+    return d + "d " + (h % 24) + "h";
+  }
+
+  function renderCacheStats() {
+    var card = document.getElementById("adm-cache-card");
+    if (!card) return;
+    window.GarudaApi
+      .adminCacheStats()
+      .then(function (res) {
+        applyCacheStats(card, res && res.stats);
+      })
+      .catch(function (err) {
+        card.classList.remove(
+          "admin-cache-stats--ok",
+          "admin-cache-stats--pending",
+          "admin-cache-stats--warn"
+        );
+        card.classList.add("admin-cache-stats--bad");
+        var pill = document.getElementById("adm-cache-status-pill");
+        if (pill) pill.textContent = "Error";
+        var meta = document.getElementById("adm-cache-meta");
+        if (meta) meta.textContent = (err && err.message) || "Failed to load stats";
+      });
+  }
+
+  function applyCacheStats(card, stats) {
+    if (!stats) return;
+    var total = (stats.hits || 0) + (stats.misses || 0);
+    var rate = total > 0 ? stats.hits / total : 0;
+
+    card.classList.remove(
+      "admin-cache-stats--ok",
+      "admin-cache-stats--pending",
+      "admin-cache-stats--warn",
+      "admin-cache-stats--bad"
+    );
+    var pillText;
+    if (!stats.enabled) {
+      card.classList.add("admin-cache-stats--bad");
+      pillText = "Cache disabled";
+    } else if (total === 0) {
+      card.classList.add("admin-cache-stats--pending");
+      pillText = "Cold";
+    } else if (rate >= 0.5) {
+      card.classList.add("admin-cache-stats--ok");
+      pillText = "Healthy";
+    } else if (rate >= 0.2) {
+      card.classList.add("admin-cache-stats--warn");
+      pillText = "Warming up";
+    } else {
+      card.classList.add("admin-cache-stats--warn");
+      pillText = "Low hit rate";
+    }
+    setText("adm-cache-status-pill", pillText);
+
+    setText("adm-cache-rate", humanPct(rate));
+    setText(
+      "adm-cache-rate-sub",
+      total + " total request" + (total === 1 ? "" : "s")
+    );
+
+    setText("adm-cache-hm", (stats.hits || 0) + " / " + (stats.misses || 0));
+    setText(
+      "adm-cache-hm-sub",
+      stats.slots +
+        " slot" +
+        (stats.slots === 1 ? "" : "s") +
+        " live"
+    );
+
+    setText("adm-cache-304", String(stats.notModified || 0));
+    setText(
+      "adm-cache-304-sub",
+      (stats.conditional || 0) +
+        " conditional GET" +
+        ((stats.conditional || 0) === 1 ? "" : "s")
+    );
+
+    setText("adm-cache-bumps", String(stats.versionBumps || 0));
+    var last = stats.lastMutationAt
+      ? new Date(stats.lastMutationAt).toLocaleString()
+      : "never";
+    setText("adm-cache-bumps-sub", "last @ " + last);
+
+    var meta = document.getElementById("adm-cache-meta");
+    if (meta) {
+      meta.textContent =
+        "Uptime " +
+        humanUptime(stats.uptimeMs) +
+        " · TTL " +
+        Math.round((stats.ttlMs || 0) / 1000) +
+        "s · v" +
+        (stats.currentVersion || 0);
+    }
+  }
+
+  function setText(id, value) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = value;
+  }
+
+  function bindCacheStatsControls() {
+    var refresh = document.getElementById("adm-cache-refresh");
+    if (refresh) {
+      refresh.addEventListener("click", function () {
+        renderCacheStats();
+      });
+    }
+    var reset = document.getElementById("adm-cache-reset");
+    if (reset) {
+      reset.addEventListener("click", function () {
+        if (
+          !confirm(
+            "Reset leaderboard cache counters? This is audit-logged and affects the hit-rate figure only; the cache itself is not flushed."
+          )
+        ) {
+          return;
+        }
+        reset.disabled = true;
+        var prev = reset.textContent;
+        reset.textContent = "Resetting…";
+        window.GarudaApi
+          .adminCacheStats({ reset: true })
+          .then(function (res) {
+            var card = document.getElementById("adm-cache-card");
+            if (card) applyCacheStats(card, res && res.stats);
+          })
+          .catch(function (err) {
+            alert((err && err.message) || "Couldn\u2019t reset counters.");
+          })
+          .then(function () {
+            reset.disabled = false;
+            reset.textContent = prev;
+          });
+      });
     }
   }
 })();

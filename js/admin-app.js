@@ -1025,8 +1025,9 @@
     var s = (data && data.submissions) || {};
     var r = (data && data.recent) || {};
     var games = Array.isArray(p.games) ? p.games : [];
-    var photo = p.photoDataUrl
-      ? '<img class="admin-profile__photo" alt="" src="' + esc(p.photoDataUrl) + '"/>'
+    var photoSrc = p.photoUrl || p.photoDataUrl || "";
+    var photo = photoSrc
+      ? '<img class="admin-profile__photo" alt="" src="' + esc(photoSrc) + '"/>'
       : '<div class="admin-profile__photo admin-profile__photo--empty" aria-hidden="true">No photo</div>';
 
     var flags = [];

@@ -358,7 +358,7 @@
 
   function renderProfile() {
     if (!user) return;
-    var photo = user.photoDataUrl || "images/Garuda Logo.jpg";
+    var photo = user.photoUrl || user.photoDataUrl || "images/Garuda Logo.jpg";
     var welcome = el("dash-welcome");
     var ignEl = el("dash-ign");
     var nameEl = el("dash-realname");
@@ -460,7 +460,7 @@
     }
     var cardPhoto = el("digital-id-photo");
     if (cardPhoto)
-      cardPhoto.src = user.photoDataUrl || "images/Garuda Logo.jpg";
+      cardPhoto.src = user.photoUrl || user.photoDataUrl || "images/Garuda Logo.jpg";
     var ign = el("digital-id-ign");
     var nm = el("digital-id-name");
     var sq = el("digital-id-squad");
@@ -1709,7 +1709,7 @@
     // image, so we lazy-load each poster per achievement. Legacy field
     // `posterDataUrl` is also accepted for back-compat during rollout.
     var ach = achievements.filter(function (a) {
-      return a.username === me && (a.hasPoster || a.posterDataUrl);
+      return a.username === me && (a.hasPoster || a.posterUrl || a.posterDataUrl);
     });
     if (!ach.length) {
       wrap.innerHTML =
@@ -1723,15 +1723,24 @@
       var img = document.createElement("img");
       img.alt = a.eventName || "Poster";
       img.loading = "lazy";
-      if (a.posterDataUrl) {
+      // v1.23.0 — posterUrl is the preferred slim reference (served
+      // by /api/blob/<sha>); posterDataUrl remains as a fallback for
+      // legacy rows that haven't been backfilled yet. Only fall back
+      // to the single-record fetch if neither is present on the list
+      // row (which happens when the list endpoint was still on the
+      // old slim view for that row).
+      if (a.posterUrl) {
+        img.src = a.posterUrl;
+      } else if (a.posterDataUrl) {
         img.src = a.posterDataUrl;
       } else if (window.GarudaApi && window.GarudaApi.getAchievement) {
         (function (aid, imgEl) {
           window.GarudaApi
             .getAchievement(aid)
             .then(function (res) {
+              var a2 = res && res.achievement;
               var url =
-                res && res.achievement && res.achievement.posterDataUrl;
+                (a2 && (a2.posterUrl || a2.posterDataUrl)) || "";
               if (url) imgEl.src = url;
             })
             .catch(function () {

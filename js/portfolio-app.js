@@ -168,7 +168,7 @@
   function renderProfile(p) {
     if (!p) return;
     var photo = el("portfolio-photo");
-    if (photo) photo.src = p.photoDataUrl || "images/Garuda Logo.jpg";
+    if (photo) photo.src = p.photoUrl || p.photoDataUrl || "images/Garuda Logo.jpg";
     var name = el("portfolio-heading");
     if (name) name.textContent = formatBladerName(p.ign);
     var squad = el("portfolio-squad");

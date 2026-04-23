@@ -107,7 +107,7 @@
     }
     var html = top
       .map(function (r) {
-        var photo = r.photoDataUrl || "images/Garuda Logo.jpg";
+        var photo = r.photoUrl || r.photoDataUrl || "images/Garuda Logo.jpg";
         var badge =
           r.rank === 1
             ? "Champion"
@@ -185,7 +185,7 @@
           escapeHtml(portfolioHref) +
           '">' +
           '<img class="lb-member__photo" src="' +
-          escapeHtml(r.photoDataUrl || "images/Garuda Logo.jpg") +
+          escapeHtml(r.photoUrl || r.photoDataUrl || "images/Garuda Logo.jpg") +
           '" alt="" />' +
           '<span class="lb-member__meta">' +
           '<span class="lb-member__ign">' +

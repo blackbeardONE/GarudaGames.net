@@ -127,19 +127,25 @@
     return a;
   }
 
+  // v1.23.0 — resolve either the blob URL (/api/blob/<sha>) or the
+  // legacy inline data URL. The browser renders both the same way in
+  // an <img src>, so the caller doesn't need to know which one it got.
   function loadAchievementPoster(id) {
     return window.GarudaApi.getAchievement(id).then(function (res) {
-      return (res && res.achievement && res.achievement.posterDataUrl) || "";
+      var a = res && res.achievement;
+      return (a && (a.posterUrl || a.posterDataUrl)) || "";
     });
   }
   function loadJlapCertificate(id) {
     return window.GarudaApi.getJlap(id).then(function (res) {
-      return (res && res.jlap && res.jlap.certificateDataUrl) || "";
+      var j = res && res.jlap;
+      return (j && (j.certificateUrl || j.certificateDataUrl)) || "";
     });
   }
   function loadJlapQr(id) {
     return window.GarudaApi.getJlap(id).then(function (res) {
-      return (res && res.jlap && res.jlap.qrDataUrl) || "";
+      var j = res && res.jlap;
+      return (j && (j.qrUrl || j.qrDataUrl)) || "";
     });
   }
 
@@ -667,9 +673,9 @@
                           var list =
                             (resp && resp.request && resp.request.evidence) || [];
                           var match = list.filter(function (e) {
-                            return e.game === game && e.photoDataUrl;
+                            return e.game === game && (e.photoUrl || e.photoDataUrl);
                           })[0];
-                          return match ? match.photoDataUrl : "";
+                          return match ? (match.photoUrl || match.photoDataUrl) : "";
                         });
                     },
                     bladerName(r) + " — " + label

@@ -61,7 +61,7 @@
     var displayIgn = formatBladerName(m.ign);
     var img = document.createElement("img");
     img.className = "verify-card__photo";
-    img.src = m.photoDataUrl || "images/Garuda Logo.jpg";
+    img.src = m.photoUrl || m.photoDataUrl || "images/Garuda Logo.jpg";
     img.width = 280;
     img.height = 280;
     img.alt =

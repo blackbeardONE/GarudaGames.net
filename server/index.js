@@ -8,9 +8,11 @@ const path = require("path");
 const rateLimit = require("express-rate-limit");
 const sanitizeHtml = require("sanitize-html");
 const qrcode = require("qrcode");
+const fs = require("fs");
 const { db } = require("./db");
 const totp = require("./totp");
 const mailer = require("./mailer");
+const blobStore = require("./blob-store");
 
 // RFC-5322-ish email validator. Deliberately narrower than the RFC because
 // real-world delivery is what matters, not theoretical validity. Max 254
@@ -696,6 +698,15 @@ function fail(res, status, message) {
   res.status(status).json({ ok: false, error: message });
 }
 
+// v1.23.0 — derive the short /api/blob/<sha> URL for an image column
+// that has been migrated to the blob store. Returns "" when the row
+// is still legacy (no sha256), so the caller can fall back to the
+// legacy inline data URL. Clients compute `imgSrc = url || dataUrl`.
+function blobUrl(sha256) {
+  if (!sha256 || typeof sha256 !== "string") return "";
+  return "/api/blob/" + sha256;
+}
+
 // --------------------------------------------------------------------------
 // v1.21.0 — Tiny in-memory TTL + ETag cache for leaderboards.
 // --------------------------------------------------------------------------
@@ -1063,6 +1074,7 @@ function profileFromRow(row) {
     squad: row.squad,
     clubRole: row.club_role,
     games,
+    photoUrl: blobUrl(row.photo_sha256 || ""),
     photoDataUrl: row.photo_data_url || "",
     certifiedJudge: !!row.certified_judge,
     professionalBlader: proGames.includes("Beyblade X"),
@@ -1126,6 +1138,7 @@ function verifyMatch(row) {
     squad: row.squad,
     clubRole: row.club_role,
     games,
+    photoUrl: blobUrl(row.photo_sha256 || ""),
     photoDataUrl: row.photo_data_url || "",
     certifiedJudge: !!row.certified_judge,
     professionalBlader: proGames.includes("Beyblade X"),
@@ -1243,6 +1256,23 @@ function getUserByUsername(username) {
   return db
     .prepare(`SELECT * FROM users WHERE username = ?`)
     .get(normUser(username));
+}
+
+// Non-failing sibling of requireAuth. Populates req.user / req.session
+// when the caller has a valid session cookie, otherwise leaves them
+// undefined. Used by endpoints (/api/blob/:sha256) that serve some
+// public content but upgrade to richer content when the caller is
+// signed in.
+function maybeAttachUser(req) {
+  if (req.user) return;
+  const sid = req.cookies && req.cookies[COOKIE_NAME];
+  if (!sid) return;
+  const s = getSession(sid);
+  if (!s) return;
+  const user = getUserByUsername(s.username);
+  if (!user) return;
+  req.session = s;
+  req.user = user;
 }
 
 function requireAuth(req, res, next) {
@@ -2905,7 +2935,7 @@ app.get("/api/portfolio/:handle", lookupLimiter, (req, res) => {
   const needle = handle.toLowerCase();
   const userRow = db
     .prepare(
-      `SELECT username, ign, squad, club_role, games_json, photo_data_url,
+      `SELECT username, ign, squad, club_role, games_json, photo_data_url, photo_sha256,
               certified_judge, professional_blader, pro_games_json,
               points, created_at
          FROM users
@@ -3006,6 +3036,7 @@ app.get("/api/portfolio/:handle", lookupLimiter, (req, res) => {
       ign: userRow.ign,
       squad: userRow.squad || "",
       clubRole: userRow.club_role || "Member",
+      photoUrl: blobUrl(userRow.photo_sha256 || ""),
       photoDataUrl: userRow.photo_data_url || "",
       games,
       certifiedJudge: !!userRow.certified_judge,
@@ -3061,7 +3092,27 @@ app.patch("/api/me/profile", requireAuth, async (req, res) => {
   const body = req.body || {};
   const patch = {};
   if (typeof body.photoDataUrl === "string") {
-    patch.photo_data_url = body.photoDataUrl.slice(0, MAX_PHOTO_URL);
+    // v1.23.0 — profile photos go straight to the blob store. If the
+    // client cleared the avatar (empty string) we null both columns;
+    // if they sent a non-data-url string (e.g. a pre-existing sha URL
+    // echoed back) we just ignore it since putBlobFromDataUrl returns
+    // null for non-data-url input.
+    const raw = body.photoDataUrl.slice(0, MAX_PHOTO_URL);
+    if (!raw) {
+      patch.photo_data_url = "";
+      patch.photo_sha256 = "";
+    } else {
+      const blob = blobStore.putBlobFromDataUrl(raw);
+      if (blob) {
+        patch.photo_sha256 = blob.sha256;
+        patch.photo_data_url = "";
+      } else {
+        // Non-image payload — store nothing rather than keeping a
+        // legacy data URL that the rest of the stack won't serve.
+        patch.photo_data_url = "";
+        patch.photo_sha256 = "";
+      }
+    }
   }
   if (typeof body.ign === "string" && body.ign.trim()) {
     const newIgn = body.ign.trim().slice(0, 64);
@@ -3297,6 +3348,54 @@ app.post("/api/me/notifications/read", requireAuth, (req, res) => {
 // Public read-only leaderboard built from verified achievements (so it's
 // always the authoritative point total — points stored on the user row can
 // drift if rank_points are later retuned).
+// v1.23.0 — content-addressed blob endpoint. Serves any image whose
+// sha256 is referenced by a row the caller is allowed to see. Public
+// blobs (user avatars + verified achievement posters) bypass auth;
+// private blobs (pending posters, JLAP cert/QR, ID-flag evidence)
+// need the owner's session cookie or a staff role. Auth policy is
+// computed in blobStore.canServeBlob(). Cache-Control is "immutable"
+// because sha256 is the identity: any change to the bytes yields a
+// different URL, so a far-future expiry is always safe.
+app.get("/api/blob/:sha256", (req, res) => {
+  const sha = String(req.params.sha256 || "").toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(sha)) {
+    return fail(res, 400, "Bad blob id.");
+  }
+  maybeAttachUser(req);
+  const perm = blobStore.canServeBlob(req, sha);
+  if (!perm.ok) {
+    // 404 over 403 here on purpose: enumerating valid-but-forbidden
+    // sha256s would let an anonymous caller test whether a private
+    // image exists. Treat "no access" identically to "no such blob".
+    return fail(res, 404, "Not found.");
+  }
+  const meta = blobStore.getBlobPath(sha);
+  if (!meta) {
+    return fail(res, 404, "Not found.");
+  }
+  // Strong ETag = first 32 hex of the content hash. That's enough
+  // entropy for an etag (128 bits) and matches the shape of the URL
+  // segment so debugging is trivial.
+  const etag = '"' + sha.slice(0, 32) + '"';
+  if (req.headers["if-none-match"] === etag) {
+    return res.status(304).end();
+  }
+  res.set("ETag", etag);
+  res.set("Content-Type", meta.mime);
+  res.set("Content-Length", String(meta.size));
+  res.set(
+    "Cache-Control",
+    (perm.public ? "public" : "private") +
+      ", max-age=604800, immutable"
+  );
+  // HEAD requests should get the headers but no body. Express already
+  // handles that when we stream via createReadStream + pipe, but be
+  // explicit so we don't open a file descriptor we'll immediately
+  // throw away.
+  if (req.method === "HEAD") return res.end();
+  fs.createReadStream(meta.path).pipe(res);
+});
+
 app.get("/api/leaderboard", (req, res) => {
   const rawGame = String((req.query && req.query.game) || "").trim();
   const gameFilter =
@@ -3348,7 +3447,7 @@ function computeLeaderboard(req, gameFilter, window) {
 
   const rows = db
     .prepare(
-      `SELECT u.username, u.ign, u.squad, u.club_role, u.photo_data_url, u.games_json,
+      `SELECT u.username, u.ign, u.squad, u.club_role, u.photo_data_url, u.photo_sha256, u.games_json,
               u.certified_judge, u.professional_blader, u.pro_games_json,
               COALESCE(SUM(a.rank_points), 0) AS total_points,
               COALESCE(COUNT(a.id), 0) AS wins
@@ -3375,6 +3474,9 @@ function computeLeaderboard(req, gameFilter, window) {
         ign: r.ign,
         squad: r.squad,
         clubRole: r.club_role || "Member",
+        // v1.23.0 — slim avatar reference. Legacy rows still carry
+        // the full base64; migrated rows ship just the short URL.
+        photoUrl: blobUrl(r.photo_sha256 || ""),
         photoDataUrl: r.photo_data_url || "",
         games,
         certifiedJudge: !!r.certified_judge,
@@ -3459,7 +3561,8 @@ function computeVerifierLeaderboard(windowLabel) {
               MAX(COALESCE(e.at, 0))    AS last_verified_at,
               u.ign                     AS ign,
               u.role                    AS role,
-              u.photo_data_url          AS photo
+              u.photo_data_url          AS photo,
+              u.photo_sha256            AS photo_sha
          FROM events e
          JOIN users u ON u.username = e.who
         GROUP BY e.who
@@ -3474,6 +3577,7 @@ function computeVerifierLeaderboard(windowLabel) {
       username: r.username,
       ign: r.ign || r.username,
       role: r.role || "user",
+      photoUrl: blobUrl(r.photo_sha || ""),
       photoDataUrl: r.photo || "",
       verifiedCount: r.verified_count || 0,
       lastVerifiedAt: r.last_verified_at || null,
@@ -3503,7 +3607,9 @@ function computeVerifierLeaderboard(windowLabel) {
 
 function mapAchievement(r, opts) {
   const playerCount = r.player_count || 0;
-  const poster = r.poster_data_url || "";
+  const posterLegacy = r.poster_data_url || "";
+  const posterSha = r.poster_sha256 || "";
+  const posterUrl = blobUrl(posterSha);
   const base = {
     id: r.id,
     username: r.username,
@@ -3524,32 +3630,41 @@ function mapAchievement(r, opts) {
     isGrandTournament: isGrandTournament(playerCount),
     rankPoints: r.rank_points,
     challongeUrl: r.challonge_url,
-    hasPoster: !!poster,
+    hasPoster: !!(posterUrl || posterLegacy),
     status: r.status,
     verifierNote: r.verifier_note,
     createdAt: r.created_at,
     verifiedAt: r.verified_at,
     verifiedBy: r.verified_by,
   };
-  // The poster is a base64 data URL that can run to hundreds of KB per row.
-  // List endpoints return a slim view (see `lite` flag); single-record
-  // endpoints return the full image so the verifier lightbox can display it.
+  // v1.23.0 — posterUrl is a short "/api/blob/<sha>" reference when
+  // the row has been migrated; posterDataUrl still carries the full
+  // base64 for legacy rows. Clients should prefer posterUrl. Both
+  // fields are always strings so downstream checks stay simple.
   if (!opts || !opts.lite) {
-    base.posterDataUrl = poster;
+    base.posterUrl = posterUrl;
+    base.posterDataUrl = posterLegacy;
+  } else {
+    // Slim list view: the URL is cheap, the data URL is not. We
+    // still send posterUrl so the verifier queue can render a
+    // thumbnail without a second round-trip.
+    base.posterUrl = posterUrl;
   }
   return base;
 }
 
 function mapJlap(r, opts) {
-  const cert = r.certificate_data_url || "";
-  const qr = r.qr_data_url || "";
+  const certLegacy = r.certificate_data_url || "";
+  const qrLegacy = r.qr_data_url || "";
+  const certUrl = blobUrl(r.certificate_sha256 || "");
+  const qrUrl = blobUrl(r.qr_sha256 || "");
   const base = {
     id: r.id,
     username: r.username,
     ign: r.user_ign || "",
     type: "jlap",
-    hasCertificate: !!cert,
-    hasQr: !!qr,
+    hasCertificate: !!(certUrl || certLegacy),
+    hasQr: !!(qrUrl || qrLegacy),
     status: r.status,
     verifierNote: r.verifier_note,
     createdAt: r.created_at,
@@ -3558,8 +3673,13 @@ function mapJlap(r, opts) {
     expiresAt: r.expires_at == null ? null : Number(r.expires_at),
   };
   if (!opts || !opts.lite) {
-    base.certificateDataUrl = cert;
-    base.qrDataUrl = qr;
+    base.certificateUrl = certUrl;
+    base.certificateDataUrl = certLegacy;
+    base.qrUrl = qrUrl;
+    base.qrDataUrl = qrLegacy;
+  } else {
+    base.certificateUrl = certUrl;
+    base.qrUrl = qrUrl;
   }
   return base;
 }
@@ -3571,14 +3691,16 @@ function mapJlap(r, opts) {
 function loadEvidenceForRequest(requestId, withPhoto) {
   const rows = db
     .prepare(
-      `SELECT id, request_id, game, league, photo_data_url, link_url, note, created_at
+      `SELECT id, request_id, game, league, photo_data_url, photo_sha256,
+              link_url, note, created_at
          FROM id_flag_evidence
         WHERE request_id = ?
         ORDER BY created_at ASC`
     )
     .all(requestId);
   return rows.map((r) => {
-    const photo = r.photo_data_url || "";
+    const photoLegacy = r.photo_data_url || "";
+    const photoUrl = blobUrl(r.photo_sha256 || "");
     const out = {
       id: r.id,
       requestId: r.request_id,
@@ -3586,11 +3708,14 @@ function loadEvidenceForRequest(requestId, withPhoto) {
       league: r.league || "",
       leagueLabel: BEYBLADE_LEAGUE_LABELS[r.league] || "",
       linkUrl: r.link_url || "",
-      hasPhoto: !!photo,
+      hasPhoto: !!(photoUrl || photoLegacy),
       note: r.note || "",
       createdAt: r.created_at,
+      // Always emit the URL (cheap); the full legacy inline only on
+      // request (verifier lightbox).
+      photoUrl: photoUrl,
     };
-    if (withPhoto) out.photoDataUrl = photo;
+    if (withPhoto) out.photoDataUrl = photoLegacy;
     return out;
   });
 }
@@ -3728,6 +3853,17 @@ app.post("/api/achievements", requireAuth, (req, res) => {
     );
   }
 
+  // v1.23.0 — if the uploader gave us a base64 data URL, move it to
+  // the blob store immediately and drop the inline copy. This keeps
+  // the row slim and means /api/leaderboard / list endpoints never
+  // carry the poster bytes again. We still accept the legacy field
+  // name (posterDataUrl) from old clients; new clients may also send
+  // posterSha256 for a pre-uploaded blob, though no caller does that
+  // today.
+  const posterBlob = blobStore.putBlobFromDataUrl(posterDataUrl);
+  const posterSha256 = posterBlob ? posterBlob.sha256 : "";
+  const posterDataUrlStored = posterBlob ? "" : posterDataUrl;
+
   const row = {
     id: uid("ach_"),
     username: req.user.username,
@@ -3739,7 +3875,8 @@ app.post("/api/achievements", requireAuth, (req, res) => {
     player_count: playerCount,
     rank_points: rankPoints,
     challonge_url: challongeUrl,
-    poster_data_url: posterDataUrl,
+    poster_data_url: posterDataUrlStored,
+    poster_sha256: posterSha256,
     game,
     status: "pending",
     verifier_note: "",
@@ -3750,10 +3887,10 @@ app.post("/api/achievements", requireAuth, (req, res) => {
   db.prepare(
     `INSERT INTO achievements (
       id, username, event_name, event_date, rank, rank_code, placement, player_count,
-      rank_points, challonge_url, poster_data_url, game, status, verifier_note,
+      rank_points, challonge_url, poster_data_url, poster_sha256, game, status, verifier_note,
       created_at, verified_at, verified_by
     ) VALUES (@id, @username, @event_name, @event_date, @rank, @rank_code, @placement,
-              @player_count, @rank_points, @challonge_url, @poster_data_url,
+              @player_count, @rank_points, @challonge_url, @poster_data_url, @poster_sha256,
               @game, @status, @verifier_note, @created_at, @verified_at, @verified_by)`
   ).run(row);
   ok(res, { achievement: mapAchievement(row) });
@@ -4047,11 +4184,18 @@ app.post("/api/jlap", requireAuth, (req, res) => {
     return fail(res, 429, "You already have a pending JLAP submission.");
   }
 
+  // v1.23.0 — move cert + QR into the blob store at ingest so list
+  // endpoints stay slim. See the identical rationale on the
+  // achievements POST above.
+  const certBlob = blobStore.putBlobFromDataUrl(cert);
+  const qrBlob = blobStore.putBlobFromDataUrl(qr);
   const row = {
     id: uid("jlap_"),
     username: req.user.username,
-    certificate_data_url: cert,
-    qr_data_url: qr,
+    certificate_data_url: certBlob ? "" : cert,
+    certificate_sha256: certBlob ? certBlob.sha256 : "",
+    qr_data_url: qrBlob ? "" : qr,
+    qr_sha256: qrBlob ? qrBlob.sha256 : "",
     status: "pending",
     verifier_note: "",
     created_at: Date.now(),
@@ -4060,9 +4204,9 @@ app.post("/api/jlap", requireAuth, (req, res) => {
   };
   db.prepare(
     `INSERT INTO jlap_submissions (
-      id, username, certificate_data_url, qr_data_url, status,
+      id, username, certificate_data_url, certificate_sha256, qr_data_url, qr_sha256, status,
       verifier_note, created_at, verified_at, verified_by
-    ) VALUES (@id, @username, @certificate_data_url, @qr_data_url, @status,
+    ) VALUES (@id, @username, @certificate_data_url, @certificate_sha256, @qr_data_url, @qr_sha256, @status,
               @verifier_note, @created_at, @verified_at, @verified_by)`
   ).run(row);
   ok(res, { jlap: mapJlap(row) });
@@ -4343,24 +4487,32 @@ app.post("/api/id-flags/request", requireAuth, (req, res) => {
   );
   const insertEvidence = db.prepare(
     `INSERT INTO id_flag_evidence (
-      id, request_id, game, league, photo_data_url, link_url, note, created_at
-    ) VALUES (@id, @request_id, @game, @league, @photo_data_url, @link_url, @note, @created_at)`
+      id, request_id, game, league, photo_data_url, photo_sha256, link_url, note, created_at
+    ) VALUES (@id, @request_id, @game, @league, @photo_data_url, @photo_sha256, @link_url, @note, @created_at)`
   );
   const now = Date.now();
+  // v1.23.0 — move each evidence photo into the blob store at ingest.
+  // Kept outside the transaction because putBlobFromDataUrl writes to
+  // disk, and better-sqlite3 transactions can't span non-DB side
+  // effects cleanly. The worst case on mid-tx failure is an orphan
+  // blob file that the GC sweep will reclaim.
+  const evidenceRows = evidenceClean.map((e) => {
+    const blob = blobStore.putBlobFromDataUrl(e.photoDataUrl);
+    return {
+      id: uid("idfe_"),
+      request_id: row.id,
+      game: e.game,
+      league: e.league,
+      photo_data_url: blob ? "" : e.photoDataUrl,
+      photo_sha256: blob ? blob.sha256 : "",
+      link_url: e.linkUrl,
+      note: e.note,
+      created_at: now,
+    };
+  });
   const tx = db.transaction(() => {
     insertRequest.run(row);
-    for (const e of evidenceClean) {
-      insertEvidence.run({
-        id: uid("idfe_"),
-        request_id: row.id,
-        game: e.game,
-        league: e.league,
-        photo_data_url: e.photoDataUrl,
-        link_url: e.linkUrl,
-        note: e.note,
-        created_at: now,
-      });
-    }
+    for (const er of evidenceRows) insertEvidence.run(er);
   });
   tx();
 

@@ -520,6 +520,144 @@ async function hashPassword(plain) {
   return { hash, salt, kdf: KDF_LABEL };
 }
 
+// --------------------------------------------------------------------------
+// TOTP recovery codes (v1.12.0)
+// --------------------------------------------------------------------------
+//
+// Ten single-use codes are minted at 2FA verify time and displayed to
+// the member exactly once. Anyone presenting a valid code at login
+// instead of a current TOTP gets through, and the code is burned on
+// use. See migrations/0008 for the table shape and why SHA-256 is
+// fine (the code itself is 50 bits of uniform random, not a
+// user-chosen password — brute force is infeasible without also
+// knowing the username + password, which pass through authLimiter).
+
+const RECOVERY_CODE_COUNT = 10;
+// Crockford base32 minus I/L/O/U to keep copies off the page free of
+// visually ambiguous characters. Enough entropy at 10 chars × log2(28)
+// ≈ 48 bits — the upstream authLimiter (15 guesses / 10 min / IP) and
+// the per-user lockout make brute force a non-starter in practice.
+const RECOVERY_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789";
+const RECOVERY_CODE_LEN = 10; // 5 + 5 with a hyphen for legibility
+
+function randInt(bound) {
+  // Rejection sampling on top of crypto.randomInt — overkill for 28
+  // possibilities, but avoids the modulo bias landmine.
+  return crypto.randomInt(bound);
+}
+
+function generateRecoveryCodePlain() {
+  let raw = "";
+  for (let i = 0; i < RECOVERY_CODE_LEN; i++) {
+    raw += RECOVERY_CODE_ALPHABET[randInt(RECOVERY_CODE_ALPHABET.length)];
+  }
+  // Display format: two 5-char groups for readability. Normalisation
+  // on redemption strips non-alphanumerics so members can paste it
+  // back in with or without the hyphen.
+  return raw.slice(0, 5) + "-" + raw.slice(5);
+}
+
+function normalizeRecoveryCode(candidate) {
+  return String(candidate || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+function hashRecoveryCode(plain) {
+  // The codes are public-server generated + never user-chosen, so the
+  // input space is the whole 28^10 alphabet. SHA-256 is plenty; there
+  // is nothing a KDF would meaningfully defend against here.
+  return crypto
+    .createHash("sha256")
+    .update(normalizeRecoveryCode(plain))
+    .digest("hex");
+}
+
+/**
+ * Replace every recovery code for `username` with a fresh set of
+ * RECOVERY_CODE_COUNT. Returns the plaintext codes in display format
+ * — the ONLY moment they ever exist off-disk. Callers MUST surface
+ * them to the user immediately; we never store them in cleartext and
+ * we never mint them again for the same codes.
+ */
+function issueRecoveryCodes(username) {
+  const codes = [];
+  const rows = [];
+  const now = Date.now();
+  for (let i = 0; i < RECOVERY_CODE_COUNT; i++) {
+    const plain = generateRecoveryCodePlain();
+    codes.push(plain);
+    rows.push({
+      id: uid("rc_"),
+      username: String(username).toLowerCase(),
+      code_hash: hashRecoveryCode(plain),
+      issued_at: now,
+    });
+  }
+  const tx = db.transaction(() => {
+    // Wipe every prior code — both used and unused — so the "X left"
+    // counter matches what we just issued and an old burned code
+    // can't accidentally be re-minted by a collision.
+    db.prepare(
+      `DELETE FROM totp_recovery_codes WHERE username = ?`
+    ).run(String(username).toLowerCase());
+    const ins = db.prepare(
+      `INSERT INTO totp_recovery_codes
+         (id, username, code_hash, issued_at, used_at)
+       VALUES (@id, @username, @code_hash, @issued_at, NULL)`
+    );
+    for (const r of rows) ins.run(r);
+  });
+  tx();
+  return codes;
+}
+
+function countRecoveryCodes(username) {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM totp_recovery_codes
+        WHERE username = ? AND used_at IS NULL`
+    )
+    .get(String(username).toLowerCase());
+  return row ? row.n : 0;
+}
+
+function clearRecoveryCodes(username) {
+  db.prepare(
+    `DELETE FROM totp_recovery_codes WHERE username = ?`
+  ).run(String(username).toLowerCase());
+}
+
+/**
+ * Attempt to burn a recovery code for `username`. Returns true on
+ * success (code existed, was unused, and is now marked used_at = now),
+ * false otherwise. The DB index on (username, code_hash) WHERE
+ * used_at IS NULL keeps this O(log n) even with history retained.
+ */
+function redeemRecoveryCode(username, candidate) {
+  const plain = normalizeRecoveryCode(candidate);
+  if (!plain || plain.length !== RECOVERY_CODE_LEN) return false;
+  const hash = hashRecoveryCode(plain);
+  const row = db
+    .prepare(
+      `SELECT id FROM totp_recovery_codes
+        WHERE username = ? AND code_hash = ? AND used_at IS NULL
+        LIMIT 1`
+    )
+    .get(String(username).toLowerCase(), hash);
+  if (!row) return false;
+  const info = db
+    .prepare(
+      `UPDATE totp_recovery_codes SET used_at = ?
+        WHERE id = ? AND used_at IS NULL`
+    )
+    .run(Date.now(), row.id);
+  // If the UPDATE didn't actually flip a row (e.g. two simultaneous
+  // requests raced), the other request won — reject this one rather
+  // than let a single code authenticate twice.
+  return info.changes === 1;
+}
+
 async function verifyPassword(plain, salt, expected, kdf) {
   const m = /scrypt-N(\d+)-r(\d+)-p(\d+)/.exec(kdf || "");
   const N = m ? parseInt(m[1], 10) : SCRYPT_N;
@@ -1090,11 +1228,49 @@ app.post("/api/auth/login", authLimiter, async (req, res) => {
         totpRequired: true,
       });
     }
-    const good2fa = user.totp_secret && totp.verify(user.totp_secret, totpCode);
+    // Two accepted shapes:
+    //   - 6-digit TOTP code (preferred path)
+    //   - recovery code (emergency path; minted at 2FA verify, single
+    //     use, burned on redemption). A correctly-formed TOTP (6
+    //     digits) never collides with a recovery code (10
+    //     alphanumerics after normalisation), so we can route by shape.
+    const trimmed = String(totpCode).trim();
+    const compact = normalizeRecoveryCode(trimmed);
+    const isTotpShape = /^\d{6}$/.test(trimmed);
+    let good2fa = false;
+    let via = null;
+    if (isTotpShape) {
+      good2fa =
+        user.totp_secret && totp.verify(user.totp_secret, trimmed);
+      via = "totp";
+    } else if (compact.length === RECOVERY_CODE_LEN) {
+      good2fa = redeemRecoveryCode(user.username, trimmed);
+      via = "recovery";
+    }
     if (!good2fa) {
       recordLoginAttempt(lockKey, false);
       auditLog(username, "auth.login.totp_fail", null, {}, req.clientIp);
       return fail(res, 401, "Invalid username or password.");
+    }
+    if (via === "recovery") {
+      // Burning a recovery code is a security-relevant event. Log it
+      // immediately and drop a security notification into the inbox
+      // so a real owner notices when they didn't authorise it.
+      auditLog(
+        user.username,
+        "2fa.recovery.used",
+        null,
+        { remaining: countRecoveryCodes(user.username) },
+        req.clientIp
+      );
+      notifyAccountChange(
+        user.username,
+        "2fa.recovery.used",
+        req,
+        `${countRecoveryCodes(user.username)} recovery code${
+          countRecoveryCodes(user.username) === 1 ? "" : "s"
+        } remaining.`
+      );
     }
   }
 
@@ -1223,7 +1399,13 @@ app.post("/api/me/2fa/verify", requireAuth, (req, res) => {
   ).run(req.user.username);
   auditLog(req.user.username, "2fa.enabled", null, {}, req.clientIp);
   notifyAccountChange(req.user.username, "2fa.enable", req);
-  ok(res, { enabled: true });
+  // v1.12.0: mint the initial recovery-code batch exactly once here.
+  // These are the ONLY time we return plaintext codes from the API;
+  // the dashboard is responsible for showing them to the member and
+  // nudging them to save the file. If they lose them, /regenerate
+  // mints a fresh set.
+  const codes = issueRecoveryCodes(req.user.username);
+  ok(res, { enabled: true, recoveryCodes: codes });
 });
 
 app.post("/api/me/2fa/disable", requireAuth, (req, res) => {
@@ -1243,6 +1425,7 @@ app.post("/api/me/2fa/disable", requireAuth, (req, res) => {
   db.prepare(
     "UPDATE users SET totp_secret = '', totp_enabled = 0 WHERE username = ?"
   ).run(req.user.username);
+  clearRecoveryCodes(req.user.username);
   auditLog(req.user.username, "2fa.disabled", null, {}, req.clientIp);
   notifyAccountChange(req.user.username, "2fa.disable", req);
   ok(res, { enabled: false });
@@ -1262,6 +1445,7 @@ app.post(
     db.prepare(
       "UPDATE users SET totp_secret = '', totp_enabled = 0 WHERE username = ?"
     ).run(target);
+    clearRecoveryCodes(target);
     auditLog(
       req.user.username,
       "admin.2fa.disabled",
@@ -1270,6 +1454,102 @@ app.post(
       req.clientIp
     );
     ok(res, { enabled: false, username: target });
+  }
+);
+
+// --------------------------------------------------------------------------
+// TOTP recovery codes (v1.12.0)
+// --------------------------------------------------------------------------
+//
+// The dashboard shows a small "Recovery codes: N remaining" badge
+// whenever 2FA is enabled; that count lives here. Regenerate mints a
+// fresh batch of ten and returns the new plaintext list exactly once
+// — this is the only API shape where plaintext codes ever leave the
+// server.
+//
+// Regeneration is a sensitive action (it invalidates every previously-
+// printed code, so an attacker who stole the last printout could use
+// it to lock the owner out of their own backup). We therefore require
+// the member's current password AND a fresh TOTP code — same bar as
+// /api/me/2fa/disable, scaled up with the password check.
+
+app.get("/api/me/2fa/recovery-codes/status", requireAuth, (req, res) => {
+  const row = db
+    .prepare("SELECT totp_enabled FROM users WHERE username = ?")
+    .get(req.user.username);
+  if (!row || !row.totp_enabled) {
+    return ok(res, { enabled: false, remaining: 0 });
+  }
+  ok(res, {
+    enabled: true,
+    remaining: countRecoveryCodes(req.user.username),
+    total: RECOVERY_CODE_COUNT,
+  });
+});
+
+app.post(
+  "/api/me/2fa/recovery-codes/regenerate",
+  requireAuth,
+  async (req, res) => {
+    const body = req.body || {};
+    const password = String(body.password || "");
+    const totpCode = String(body.code || "").trim();
+
+    const row = db
+      .prepare(
+        `SELECT totp_secret, totp_enabled, password_hash, password_salt,
+                password_kdf
+           FROM users WHERE username = ?`
+      )
+      .get(req.user.username);
+    if (!row || !row.totp_enabled) {
+      return fail(
+        res,
+        400,
+        "Two-factor authentication isn't enabled on this account."
+      );
+    }
+    let good = false;
+    try {
+      good = await verifyPassword(
+        password,
+        row.password_salt,
+        row.password_hash,
+        row.password_kdf
+      );
+    } catch (_) {
+      good = false;
+    }
+    if (!good) {
+      auditLog(
+        req.user.username,
+        "2fa.recovery.regen.fail",
+        null,
+        { reason: "bad_password" },
+        req.clientIp
+      );
+      return fail(res, 401, "Password is incorrect.");
+    }
+    if (!totp.verify(row.totp_secret, totpCode)) {
+      auditLog(
+        req.user.username,
+        "2fa.recovery.regen.fail",
+        null,
+        { reason: "bad_totp" },
+        req.clientIp
+      );
+      return fail(res, 401, "That authenticator code didn't match.");
+    }
+    const codes = issueRecoveryCodes(req.user.username);
+    auditLog(
+      req.user.username,
+      "2fa.recovery.regenerated",
+      null,
+      { count: codes.length },
+      req.clientIp
+    );
+    notifyAccountChange(req.user.username, "2fa.recovery.regenerated", req);
+    ok(res, { recoveryCodes: codes });
   }
 );
 
@@ -1663,6 +1943,8 @@ const SECURITY_EVENT_LABELS = {
   "password.reset": "Your password was reset",
   "2fa.enable": "Two-factor authentication turned on",
   "2fa.disable": "Two-factor authentication turned off",
+  "2fa.recovery.used": "A 2FA recovery code was used to sign in",
+  "2fa.recovery.regenerated": "Your 2FA recovery codes were regenerated",
   "email.change": "Your account email was changed",
   "sessions.revoke_all": "All other sessions were signed out",
   "session.revoke": "A session was revoked",

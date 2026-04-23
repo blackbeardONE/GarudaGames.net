@@ -533,19 +533,95 @@
     var qr = el("tfa-qr");
     var secretEl = el("tfa-secret");
 
+    // v1.12.0 recovery-codes panel.
+    var recSummary = el("tfa-recovery-summary");
+    var recRegenBtn = el("tfa-recovery-regen-btn");
+    var recRegenForm = el("tfa-recovery-regen-form");
+    var recRegenConfirm = el("tfa-recovery-regen-confirm");
+    var recRegenCancel = el("tfa-recovery-regen-cancel");
+    var recRegenPw = el("tfa-recovery-password");
+    var recRegenCode = el("tfa-recovery-code");
+    var recNewPanel = el("tfa-recovery-new");
+    var recNewList = el("tfa-recovery-list");
+    var recNewStatus = el("tfa-recovery-new-status");
+    var recDownloadBtn = el("tfa-recovery-download");
+    var recCopyBtn = el("tfa-recovery-copy");
+    var recDismissBtn = el("tfa-recovery-dismiss");
+
     function show(which) {
       idle.hidden = which !== "idle";
       setup.hidden = which !== "setup";
       enabled.hidden = which !== "enabled";
     }
 
+    // Render the set of just-minted codes into the "save these" panel.
+    // This is the only place we ever display plaintext codes in the UI.
+    function showRecoveryCodes(codes) {
+      if (!recNewPanel || !recNewList) return;
+      recNewList.innerHTML = "";
+      for (var i = 0; i < codes.length; i++) {
+        var li = document.createElement("li");
+        li.textContent = codes[i];
+        recNewList.appendChild(li);
+      }
+      recNewPanel.hidden = false;
+      if (recNewStatus) recNewStatus.textContent = "";
+      if (recNewPanel.scrollIntoView) {
+        recNewPanel.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }
+
+    function hideRecoveryCodes() {
+      if (!recNewPanel || !recNewList) return;
+      recNewList.innerHTML = "";
+      recNewPanel.hidden = true;
+    }
+
+    function refreshRecoveryStatus() {
+      if (!recSummary) return;
+      window.GarudaApi.twoFactor
+        .recoveryStatus()
+        .then(function (res) {
+          if (!res.enabled) {
+            recSummary.textContent = "";
+            return;
+          }
+          if (res.remaining === 0) {
+            recSummary.innerHTML =
+              "<strong>0 recovery codes remaining.</strong> " +
+              "Regenerate now so you have a way back in if you lose your authenticator.";
+          } else if (res.remaining <= 3) {
+            recSummary.innerHTML =
+              "<strong>" +
+              res.remaining +
+              " of " +
+              res.total +
+              "</strong> recovery codes remaining. " +
+              "Consider regenerating before you run out.";
+          } else {
+            recSummary.textContent =
+              res.remaining +
+              " of " +
+              res.total +
+              " recovery codes remaining. Each works once, at sign-in, instead of an authenticator code.";
+          }
+        })
+        .catch(function (err) {
+          recSummary.textContent =
+            (err && err.message) || "Couldn't load recovery-code status.";
+        });
+    }
+
     function refresh() {
       status.textContent = "";
+      hideRecoveryCodes();
+      if (recRegenForm) recRegenForm.hidden = true;
       window.GarudaApi.twoFactor.status()
         .then(function (res) {
           if (res.enabled) {
             state.textContent = "2FA is ON for this account.";
             show("enabled");
+            refreshRecoveryStatus();
           } else {
             state.textContent = "2FA is off. Turn it on to require a code on every sign-in.";
             show("idle");
@@ -590,9 +666,13 @@
       }
       status.textContent = "Verifying…";
       window.GarudaApi.twoFactor.verify(code)
-        .then(function () {
+        .then(function (res) {
           status.textContent = "2FA turned on.";
-          refresh();
+          show("enabled");
+          refreshRecoveryStatus();
+          if (res && Array.isArray(res.recoveryCodes) && res.recoveryCodes.length) {
+            showRecoveryCodes(res.recoveryCodes);
+          }
         })
         .catch(function (err) {
           status.textContent = (err && err.message) || "That code didn't work.";
@@ -616,6 +696,119 @@
           status.textContent = (err && err.message) || "Couldn't turn off 2FA.";
         });
     });
+
+    // ---- Recovery code regeneration ----
+    if (recRegenBtn && recRegenForm) {
+      recRegenBtn.addEventListener("click", function () {
+        recRegenForm.hidden = false;
+        if (recRegenPw) recRegenPw.value = "";
+        if (recRegenCode) recRegenCode.value = "";
+        if (recRegenPw) recRegenPw.focus();
+      });
+    }
+    if (recRegenCancel && recRegenForm) {
+      recRegenCancel.addEventListener("click", function () {
+        recRegenForm.hidden = true;
+      });
+    }
+    if (recRegenConfirm) {
+      recRegenConfirm.addEventListener("click", function () {
+        var pw = recRegenPw ? recRegenPw.value : "";
+        var code = recRegenCode ? (recRegenCode.value || "").trim() : "";
+        if (!pw) {
+          status.textContent = "Enter your current password.";
+          return;
+        }
+        if (!/^\d{6}$/.test(code)) {
+          status.textContent = "Enter a current 6-digit authenticator code.";
+          return;
+        }
+        status.textContent = "Regenerating…";
+        window.GarudaApi.twoFactor
+          .regenerateRecoveryCodes(pw, code)
+          .then(function (res) {
+            status.textContent = "New recovery codes generated.";
+            recRegenForm.hidden = true;
+            if (recRegenPw) recRegenPw.value = "";
+            if (recRegenCode) recRegenCode.value = "";
+            refreshRecoveryStatus();
+            if (res && Array.isArray(res.recoveryCodes)) {
+              showRecoveryCodes(res.recoveryCodes);
+            }
+          })
+          .catch(function (err) {
+            status.textContent =
+              (err && err.message) || "Could not regenerate codes.";
+          });
+      });
+    }
+
+    // ---- Download / copy / dismiss for the "save these" panel ----
+    function collectCodesAsText() {
+      if (!recNewList) return "";
+      var items = recNewList.querySelectorAll("li");
+      var lines = [];
+      for (var i = 0; i < items.length; i++) {
+        lines.push(items[i].textContent || "");
+      }
+      var header = [
+        "Garuda Games — 2FA recovery codes",
+        "Generated: " + new Date().toISOString(),
+        "Each code works ONCE at sign-in instead of an authenticator code.",
+        "Store somewhere safe — password manager, printed page, etc.",
+        ""
+      ].join("\n");
+      return header + lines.join("\n") + "\n";
+    }
+    if (recDownloadBtn) {
+      recDownloadBtn.addEventListener("click", function () {
+        var text = collectCodesAsText();
+        try {
+          var blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement("a");
+          a.href = url;
+          var uname = (user && user.username) || "account";
+          a.download = "garudagames-recovery-" + uname + ".txt";
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(function () {
+            URL.revokeObjectURL(url);
+            a.parentNode && a.parentNode.removeChild(a);
+          }, 0);
+          if (recNewStatus)
+            recNewStatus.textContent = "Downloaded.";
+        } catch (e) {
+          if (recNewStatus)
+            recNewStatus.textContent = "Download failed: " + e.message;
+        }
+      });
+    }
+    if (recCopyBtn) {
+      recCopyBtn.addEventListener("click", function () {
+        var text = collectCodesAsText();
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(
+            function () {
+              if (recNewStatus)
+                recNewStatus.textContent = "Copied to clipboard.";
+            },
+            function () {
+              if (recNewStatus)
+                recNewStatus.textContent = "Copy failed — select and copy manually.";
+            }
+          );
+        } else if (recNewStatus) {
+          recNewStatus.textContent =
+            "Clipboard not available — use Download instead.";
+        }
+      });
+    }
+    if (recDismissBtn) {
+      recDismissBtn.addEventListener("click", function () {
+        hideRecoveryCodes();
+      });
+    }
 
     refresh();
   }

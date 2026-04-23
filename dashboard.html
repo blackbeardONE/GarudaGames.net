@@ -354,6 +354,62 @@
                     2FA is currently <strong>on</strong>. Every new sign-in
                     on this account will ask for a code.
                   </p>
+                  <div
+                    id="tfa-recovery-card"
+                    class="recovery-card"
+                    aria-live="polite"
+                  >
+                    <h4 class="recovery-card__title">Recovery codes</h4>
+                    <p class="dash-card__hint" id="tfa-recovery-summary">
+                      Checking your recovery codes…
+                    </p>
+                    <button
+                      type="button"
+                      class="btn btn--ghost btn--sm"
+                      id="tfa-recovery-regen-btn"
+                    >
+                      Regenerate codes
+                    </button>
+                    <div id="tfa-recovery-regen-form" hidden>
+                      <p class="dash-card__hint">
+                        Regenerating invalidates every previously-printed
+                        code. Enter your password and a current
+                        authenticator code to confirm.
+                      </p>
+                      <label>Current password
+                        <input
+                          type="password"
+                          id="tfa-recovery-password"
+                          autocomplete="current-password"
+                        />
+                      </label>
+                      <label>6-digit authenticator code
+                        <input
+                          type="text"
+                          id="tfa-recovery-code"
+                          inputmode="numeric"
+                          autocomplete="one-time-code"
+                          maxlength="6"
+                          pattern="[0-9]{6}"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        class="btn btn--primary btn--sm"
+                        id="tfa-recovery-regen-confirm"
+                      >
+                        Regenerate 10 codes
+                      </button>
+                      <button
+                        type="button"
+                        class="btn btn--ghost btn--sm"
+                        id="tfa-recovery-regen-cancel"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+
                   <label>Enter a current code to turn it off
                     <input
                       type="text"
@@ -373,6 +429,48 @@
                   <button type="button" class="btn btn--primary" id="tfa-start-btn">
                     Set up two-factor authentication
                   </button>
+                </div>
+
+                <!-- Shown once, right after a successful 2FA verify or a
+                     manual regenerate. Carries the plaintext recovery
+                     codes and a download button — the user MUST save
+                     them here because we never display them again. -->
+                <div id="tfa-recovery-new" class="recovery-new" hidden>
+                  <h4 class="recovery-new__title">Save your recovery codes</h4>
+                  <p class="dash-card__hint">
+                    Each code below works once, in place of an authenticator
+                    code, at sign-in. Store them somewhere safe —
+                    password manager, printed page, anywhere that isn't
+                    the same device running your authenticator. We do not
+                    show these again.
+                  </p>
+                  <ol id="tfa-recovery-list" class="recovery-list"></ol>
+                  <button
+                    type="button"
+                    class="btn btn--primary btn--sm"
+                    id="tfa-recovery-download"
+                  >
+                    Download as .txt
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn--ghost btn--sm"
+                    id="tfa-recovery-copy"
+                  >
+                    Copy all
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn--ghost btn--sm"
+                    id="tfa-recovery-dismiss"
+                  >
+                    I've saved them
+                  </button>
+                  <p
+                    class="dash-upload-status"
+                    id="tfa-recovery-new-status"
+                    aria-live="polite"
+                  ></p>
                 </div>
 
                 <p id="tfa-status" class="dash-upload-status" aria-live="polite"></p>

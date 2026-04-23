@@ -4,6 +4,9 @@
   var passEl = document.getElementById("login-password");
   var totpBlock = document.getElementById("login-totp-block");
   var totpEl = document.getElementById("login-totp");
+  var totpLabel = document.getElementById("login-totp-label");
+  var totpHint = document.getElementById("login-totp-hint");
+  var useRecoveryLink = document.getElementById("login-use-recovery");
   var errEl = document.getElementById("login-error");
   var regNote = document.getElementById("login-registered-note");
   var submitBtn = form ? form.querySelector('button[type="submit"]') : null;
@@ -26,6 +29,62 @@
   });
 
   if (!form || !userEl || !passEl) return;
+
+  // Toggle between the 6-digit authenticator code input and a 10-char
+  // recovery code input. The server accepts either (dispatches on the
+  // shape), so all the UI does is relax validation and swap the label.
+  var recoveryMode = false;
+  function setRecoveryMode(on) {
+    recoveryMode = !!on;
+    if (!totpEl || !totpLabel) return;
+    if (recoveryMode) {
+      totpLabel.textContent = "Recovery code";
+      totpEl.setAttribute("inputmode", "text");
+      totpEl.removeAttribute("pattern");
+      totpEl.placeholder = "XXXXX-XXXXX";
+      totpEl.value = "";
+      totpEl.maxLength = 11;
+      if (totpHint) {
+        totpHint.innerHTML =
+          "Enter one of the ten single-use recovery codes you saved when you turned on 2FA. " +
+          '<a href="#" id="login-use-totp">Use authenticator code instead</a>.';
+        var back = document.getElementById("login-use-totp");
+        if (back) {
+          back.addEventListener("click", function (e) {
+            e.preventDefault();
+            setRecoveryMode(false);
+          });
+        }
+      }
+      totpEl.focus();
+    } else {
+      totpLabel.textContent = "Authenticator code";
+      totpEl.setAttribute("inputmode", "numeric");
+      totpEl.setAttribute("pattern", "[0-9]{6}");
+      totpEl.placeholder = "6-digit code";
+      totpEl.value = "";
+      totpEl.maxLength = 11;
+      if (totpHint) {
+        totpHint.innerHTML =
+          "This account has two-factor authentication on. Enter the " +
+          "current code from your authenticator app, or " +
+          '<a href="#" id="login-use-recovery">use a recovery code</a> instead.';
+        var link = document.getElementById("login-use-recovery");
+        if (link) {
+          link.addEventListener("click", function (e) {
+            e.preventDefault();
+            setRecoveryMode(true);
+          });
+        }
+      }
+    }
+  }
+  if (useRecoveryLink) {
+    useRecoveryLink.addEventListener("click", function (e) {
+      e.preventDefault();
+      setRecoveryMode(true);
+    });
+  }
 
   form.addEventListener("submit", function (e) {
     e.preventDefault();

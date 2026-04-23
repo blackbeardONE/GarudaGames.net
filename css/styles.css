@@ -4561,6 +4561,46 @@ body.admin-modal-open {
   flex-wrap: wrap;
 }
 
+.recovery-card {
+  margin: 0.75rem 0;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+}
+.recovery-card__title {
+  margin: 0 0 0.4rem 0;
+  font-size: 0.95rem;
+  color: var(--heading, #fff);
+}
+.recovery-new {
+  margin: 0.9rem 0;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(230, 178, 60, 0.45);
+  background: rgba(230, 178, 60, 0.07);
+  border-radius: 6px;
+}
+.recovery-new__title {
+  margin: 0 0 0.4rem 0;
+  color: #f0c659;
+}
+.recovery-list {
+  list-style: decimal;
+  padding-left: 1.4rem;
+  margin: 0.5rem 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.25rem 1rem;
+}
+.recovery-list li {
+  padding: 0.1rem 0.3rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
 @media (max-width: 640px) {
   .news-form__row {
     grid-template-columns: 1fr;

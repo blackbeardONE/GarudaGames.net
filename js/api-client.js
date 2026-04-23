@@ -91,6 +91,15 @@
       },
       disable: function (code) {
         return apiRequest("POST", "/me/2fa/disable", { code: code });
+      },
+      recoveryStatus: function () {
+        return apiRequest("GET", "/me/2fa/recovery-codes/status");
+      },
+      regenerateRecoveryCodes: function (password, code) {
+        return apiRequest("POST", "/me/2fa/recovery-codes/regenerate", {
+          password: password,
+          code: code
+        });
       }
     },
     resetPassword: function (token, newPassword) {

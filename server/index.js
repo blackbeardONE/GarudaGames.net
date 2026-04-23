@@ -1042,6 +1042,27 @@ const exportLimiter = SKIP_RATE_LIMIT
       },
     });
 
+// v1.13.0: tight cap on DELETE /api/me/sessions/:id. A legitimate
+// user clicks "Revoke" once, maybe a handful of times if they ran
+// five tabs logged in and want to tidy up. A scripted attacker who
+// got hold of a cookie and wants to brute-force session IDs or
+// walk every UUID in the table will hit this quickly. 30 per hour
+// per IP is still comfortably more than anyone should ever need
+// and catches automation long before it does meaningful damage.
+const sessionRevokeLimiter = SKIP_RATE_LIMIT
+  ? passthrough
+  : rateLimit({
+      windowMs: 60 * 60 * 1000,
+      limit: 30,
+      standardHeaders: "draft-7",
+      legacyHeaders: false,
+      message: {
+        ok: false,
+        error:
+          "Too many session revoke attempts. Try again in a few minutes.",
+      },
+    });
+
 // Apply the general API limiter to everything; specific routes opt into stricter ones below.
 app.use("/api/", apiLimiter);
 
@@ -1610,7 +1631,61 @@ function maskIp(ip) {
   return s;
 }
 
-app.get("/api/me/sessions", requireAuth, (req, res) => {
+// v1.13.0: best-effort, offline-only IP-to-location lookup for the
+// "Active sessions" card. Uses fast-geoip (MIT) which lazy-loads its
+// MaxMind-derived DB chunks from disk — no network calls, no
+// per-request cost after the first hit in each region.
+//
+// Returns a human-readable "City, COUNTRY" / "COUNTRY" / "" string
+// suitable for dropping into UI text. We deliberately do not expose
+// lat/lon or ISP — the point is to help a member spot "why is there
+// a session from Vietnam" at a glance, not to build a tracking
+// profile of the member against their own account.
+//
+// fast-geoip's `lookup()` is async; the helper swallows every error
+// path (including loopback/private addresses that naturally return
+// null) so a failing lookup never takes down the sessions endpoint.
+let _geoip = null;
+function loadGeoip() {
+  if (_geoip !== null) return _geoip;
+  try {
+    _geoip = require("fast-geoip");
+  } catch (_) {
+    _geoip = false;
+  }
+  return _geoip;
+}
+
+async function friendlyLocation(ip) {
+  const s = String(ip || "").trim();
+  if (!s) return "";
+  // Fast-path loopback and RFC1918 ranges — no geolocation ever
+  // resolves them and we don't want to waste DB lookups on localhost.
+  if (
+    s === "::1" ||
+    s === "127.0.0.1" ||
+    s.startsWith("10.") ||
+    s.startsWith("192.168.") ||
+    /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(s) ||
+    s.startsWith("fe80:")
+  ) {
+    return "Local network";
+  }
+  const geoip = loadGeoip();
+  if (!geoip || !geoip.lookup) return "";
+  try {
+    const hit = await geoip.lookup(s);
+    if (!hit) return "";
+    const city = hit.city || "";
+    const country = hit.country || "";
+    if (city && country) return `${city}, ${country}`;
+    return country || "";
+  } catch (_) {
+    return "";
+  }
+}
+
+app.get("/api/me/sessions", requireAuth, async (req, res) => {
   const rows = db
     .prepare(
       `SELECT id, created_at, expires_at, user_agent, ip_address, last_seen_at
@@ -1620,7 +1695,15 @@ app.get("/api/me/sessions", requireAuth, (req, res) => {
     )
     .all(req.user.username);
   const currentId = req.session && req.session.id;
-  const shaped = rows.map((row) => ({
+  // Run every IP->location lookup in parallel. The DB backing
+  // fast-geoip is memory-mapped after the first hit, so N parallel
+  // lookups for nearby IPs cost about the same as one.
+  const locations = await Promise.all(
+    rows.map((row) =>
+      friendlyLocation(row.ip_address).catch(() => "")
+    )
+  );
+  const shaped = rows.map((row, i) => ({
     id: row.id,
     // Short prefix is plenty for the UI to key off of — no reason to
     // echo the whole secret even to the owner.
@@ -1632,12 +1715,13 @@ app.get("/api/me/sessions", requireAuth, (req, res) => {
     platform: friendlyPlatform(row.user_agent),
     userAgent: String(row.user_agent || "").slice(0, 255),
     ip: maskIp(row.ip_address),
+    location: locations[i] || "",
     isCurrent: row.id === currentId,
   }));
   ok(res, { sessions: shaped, currentId: currentId || null });
 });
 
-app.delete("/api/me/sessions/:id", requireAuth, (req, res) => {
+app.delete("/api/me/sessions/:id", sessionRevokeLimiter, requireAuth, (req, res) => {
   const target = String(req.params.id || "");
   if (!target) return fail(res, 400, "Missing session id.");
   const row = db
@@ -4082,6 +4166,169 @@ app.delete("/api/admin/members/:username", requireRole("admin"), (req, res) => {
 
   ok(res, {});
 });
+
+// --------------------------------------------------------------------------
+// Admin security view (v1.13.0)
+// --------------------------------------------------------------------------
+//
+// Gives admins a one-screen picture of a member's security state
+// when a support ticket lands on their desk. Returns (a) basic
+// account metadata (2FA state, email verification, recovery-code
+// remaining), (b) every still-live session including age and IP
+// prefix, and (c) the last N security-relevant audit rows actor OR
+// target of which is this user.
+//
+// This endpoint is READ ONLY — any destructive action (password
+// reset, disable 2FA, delete user) still goes through its own
+// dedicated admin route with its own audit entry. Looking up a
+// member's security data does get logged so admins can answer
+// "who looked at my audit trail?".
+
+const SECURITY_AUDIT_ACTIONS = [
+  "auth.login.ok",
+  "auth.login.fail",
+  "auth.login.totp_fail",
+  "password.change",
+  "password.reset",
+  "password.reset.requested",
+  "password.reset.issued",
+  "password.reset.used",
+  "2fa.enabled",
+  "2fa.disabled",
+  "2fa.verify.fail",
+  "2fa.disable.fail",
+  "2fa.recovery.used",
+  "2fa.recovery.regenerated",
+  "2fa.recovery.regen.fail",
+  "email.change",
+  "email.change.fail",
+  "email.verify.ok",
+  "session.revoke",
+  "sessions.revoke_all",
+  "account.delete",
+  "admin.member.delete",
+  "admin.member.update",
+  "admin.reset.issued",
+  "admin.2fa.disabled",
+];
+
+app.get(
+  "/api/admin/members/:username/security",
+  requireRole("admin"),
+  async (req, res) => {
+    const username = normUser(req.params.username);
+    const user = getUserByUsername(username);
+    if (!user) return fail(res, 404, "Not found.");
+
+    const now = Date.now();
+    const sessionRows = db
+      .prepare(
+        `SELECT id, created_at, expires_at, user_agent, ip_address,
+                last_seen_at
+           FROM sessions
+          WHERE username = ? AND expires_at > ?
+          ORDER BY COALESCE(last_seen_at, created_at) DESC
+          LIMIT 50`
+      )
+      .all(username, now);
+
+    const locations = await Promise.all(
+      sessionRows.map((row) =>
+        friendlyLocation(row.ip_address).catch(() => "")
+      )
+    );
+    const sessions = sessionRows.map((row, i) => ({
+      idShort: row.id.slice(0, 8),
+      createdAt: row.created_at,
+      expiresAt: row.expires_at,
+      lastSeenAt: row.last_seen_at,
+      browser: friendlyUserAgent(row.user_agent),
+      platform: friendlyPlatform(row.user_agent),
+      ip: maskIp(row.ip_address),
+      location: locations[i] || "",
+    }));
+
+    // "Security-relevant" = either a login/2FA/password/email event
+    // where the target OR actor is this user, or an admin action
+    // that touched this user. We limit to 100 rows to keep the
+    // payload bounded; admins wanting deeper history use the
+    // existing /api/admin/audit endpoint with an actor/target filter.
+    const placeholders = SECURITY_AUDIT_ACTIONS.map(() => "?").join(", ");
+    const auditRows = db
+      .prepare(
+        `SELECT id, actor, action, target, detail_json, ip, created_at
+           FROM audit_log
+          WHERE action IN (${placeholders})
+            AND (actor = ? OR target = ?)
+          ORDER BY created_at DESC
+          LIMIT 100`
+      )
+      .all(...SECURITY_AUDIT_ACTIONS, username, username);
+
+    const audit = auditRows.map((row) => {
+      let detail = {};
+      try {
+        detail = row.detail_json ? JSON.parse(row.detail_json) : {};
+      } catch (_) {
+        detail = { _raw: row.detail_json };
+      }
+      return {
+        id: row.id,
+        actor: row.actor,
+        action: row.action,
+        target: row.target,
+        detail,
+        ip: maskIp(row.ip),
+        createdAt: row.created_at,
+      };
+    });
+
+    const notifRows = db
+      .prepare(
+        `SELECT id, kind, title, body, link, read_at, created_at
+           FROM notifications
+          WHERE username = ? AND kind = 'security'
+          ORDER BY created_at DESC
+          LIMIT 50`
+      )
+      .all(username);
+
+    auditLog(
+      req.user.username,
+      "admin.security.view",
+      username,
+      { sessions: sessions.length, audit: audit.length },
+      req.clientIp
+    );
+
+    ok(res, {
+      profile: {
+        username: user.username,
+        role: user.role,
+        email: user.email || "",
+        emailVerified: !!user.email_verified_at,
+        emailVerifiedAt: user.email_verified_at,
+        totpEnabled: !!user.totp_enabled,
+        recoveryCodesRemaining: user.totp_enabled
+          ? countRecoveryCodes(username)
+          : 0,
+        recoveryCodesTotal: RECOVERY_CODE_COUNT,
+        createdAt: user.created_at,
+      },
+      sessions,
+      audit,
+      notifications: notifRows.map((row) => ({
+        id: row.id,
+        kind: row.kind,
+        title: row.title,
+        body: row.body,
+        link: row.link,
+        readAt: row.read_at,
+        createdAt: row.created_at,
+      })),
+    });
+  }
+);
 
 app.get("/api/admin/backup", requireRole("admin"), (_req, res) => {
   const users = db

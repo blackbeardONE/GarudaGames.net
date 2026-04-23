@@ -524,11 +524,13 @@
       '<div class="admin-profile-actions">' +
       '<button type="button" class="btn btn--primary btn--sm" id="admin-profile-edit">Edit profile</button>' +
       '<button type="button" class="btn btn--secondary btn--sm" id="admin-issue-reset">Issue password reset link</button>' +
+      '<button type="button" class="btn btn--secondary btn--sm" id="admin-view-security">Security history</button>' +
       (totpEnabled
         ? '<button type="button" class="btn btn--ghost btn--sm" id="admin-disable-2fa">Disable 2FA</button>'
         : '<span class="admin-inline-note">2FA not enabled</span>') +
       "</div>" +
       '<div id="admin-security-result" class="admin-status" hidden></div>' +
+      '<div id="admin-security-panel" class="admin-security-panel" hidden></div>' +
       buildProfileHtml(data);
     var editBtn = el("admin-profile-edit");
     if (editBtn) {
@@ -544,6 +546,175 @@
     if (disable2faBtn) disable2faBtn.addEventListener("click", function () {
       adminDisableMemberTwoFactor(p.username);
     });
+    var secBtn = el("admin-view-security");
+    if (secBtn) secBtn.addEventListener("click", function () {
+      adminViewSecurity(p.username);
+    });
+  }
+
+  // v1.13.0: fetch /api/admin/members/:u/security and render a
+  // timeline of sessions + security audit events + security inbox.
+  // Renders into #admin-security-panel; toggles open/closed on
+  // repeated clicks.
+  function adminViewSecurity(username) {
+    var panel = el("admin-security-panel");
+    if (!panel) return;
+    if (!panel.hidden && panel.dataset.username === username) {
+      panel.hidden = true;
+      return;
+    }
+    panel.hidden = false;
+    panel.dataset.username = username;
+    panel.innerHTML = '<p class="admin-status">Loading security history…</p>';
+    window.GarudaApi
+      .adminGetMemberSecurity(username)
+      .then(function (data) {
+        renderSecurityPanel(panel, data);
+      })
+      .catch(function (err) {
+        panel.innerHTML =
+          '<p class="admin-status">' +
+          esc((err && err.message) || "Could not load security history.") +
+          "</p>";
+      });
+  }
+
+  function fmtWhen(ts) {
+    if (!ts) return "";
+    try {
+      return new Date(ts).toLocaleString();
+    } catch (_) {
+      return String(ts);
+    }
+  }
+
+  function renderSecurityPanel(panel, data) {
+    var p = data.profile || {};
+    var sessions = Array.isArray(data.sessions) ? data.sessions : [];
+    var audit = Array.isArray(data.audit) ? data.audit : [];
+    var notifs = Array.isArray(data.notifications) ? data.notifications : [];
+
+    var profileBits = [];
+    profileBits.push(
+      "<strong>2FA:</strong> " +
+        (p.totpEnabled ? "ON" : "off") +
+        (p.totpEnabled
+          ? " (" +
+            p.recoveryCodesRemaining +
+            "/" +
+            p.recoveryCodesTotal +
+            " recovery codes left)"
+          : "")
+    );
+    profileBits.push(
+      "<strong>Email:</strong> " +
+        (p.email ? esc(p.email) : "—") +
+        (p.email
+          ? " (" + (p.emailVerified ? "verified" : "unverified") + ")"
+          : "")
+    );
+    profileBits.push(
+      "<strong>Account created:</strong> " + esc(fmtWhen(p.createdAt))
+    );
+
+    var sessionHtml = sessions.length
+      ? '<ul class="admin-sec-list">' +
+        sessions
+          .map(function (s) {
+            return (
+              "<li>" +
+              "<span class=\"admin-sec-head\">" +
+              esc(s.browser || "Browser") +
+              (s.platform ? " · " + esc(s.platform) : "") +
+              "</span>" +
+              '<span class="admin-sec-meta">' +
+              (s.location ? esc(s.location) + " · " : "") +
+              (s.ip ? esc(s.ip) + " · " : "") +
+              "last seen " +
+              esc(fmtWhen(s.lastSeenAt || s.createdAt)) +
+              " · expires " +
+              esc(fmtWhen(s.expiresAt)) +
+              "</span>" +
+              "</li>"
+            );
+          })
+          .join("") +
+        "</ul>"
+      : "<p class=\"admin-status\">No active sessions.</p>";
+
+    var auditHtml = audit.length
+      ? '<ul class="admin-sec-list">' +
+        audit
+          .map(function (a) {
+            var detail = a.detail && typeof a.detail === "object" ? a.detail : {};
+            var detailKeys = Object.keys(detail);
+            var detailStr = detailKeys.length
+              ? detailKeys
+                  .map(function (k) {
+                    return k + "=" + JSON.stringify(detail[k]);
+                  })
+                  .join(", ")
+              : "";
+            return (
+              "<li>" +
+              '<span class="admin-sec-head">' +
+              esc(a.action) +
+              (a.actor && a.actor !== p.username
+                ? " by " + esc(a.actor)
+                : "") +
+              "</span>" +
+              '<span class="admin-sec-meta">' +
+              esc(fmtWhen(a.createdAt)) +
+              (a.ip ? " · " + esc(a.ip) : "") +
+              (detailStr ? " · " + esc(detailStr) : "") +
+              "</span>" +
+              "</li>"
+            );
+          })
+          .join("") +
+        "</ul>"
+      : "<p class=\"admin-status\">No security events logged.</p>";
+
+    var notifsHtml = notifs.length
+      ? '<ul class="admin-sec-list">' +
+        notifs
+          .map(function (n) {
+            return (
+              "<li>" +
+              '<span class="admin-sec-head">' +
+              esc(n.title) +
+              "</span>" +
+              '<span class="admin-sec-meta">' +
+              esc(fmtWhen(n.createdAt)) +
+              (n.readAt ? " · read" : " · unread") +
+              "</span>" +
+              (n.body
+                ? '<div class="admin-sec-body">' + esc(n.body) + "</div>"
+                : "") +
+              "</li>"
+            );
+          })
+          .join("") +
+        "</ul>"
+      : "<p class=\"admin-status\">No security notifications sent.</p>";
+
+    panel.innerHTML =
+      '<h3 class="admin-sec-title">Security history — ' +
+      esc(p.username) +
+      "</h3>" +
+      '<div class="admin-sec-profile">' +
+      profileBits.join(" · ") +
+      "</div>" +
+      '<h4 class="admin-sec-subtitle">Active sessions (' +
+      sessions.length +
+      ")</h4>" +
+      sessionHtml +
+      '<h4 class="admin-sec-subtitle">Security events (latest ' +
+      audit.length +
+      ")</h4>" +
+      auditHtml +
+      '<h4 class="admin-sec-subtitle">In-app security notifications</h4>' +
+      notifsHtml;
   }
 
   function adminIssueResetLink(username) {

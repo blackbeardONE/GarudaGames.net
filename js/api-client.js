@@ -290,6 +290,12 @@
         "/admin/members/" + encodeURIComponent(username)
       );
     },
+    adminGetMemberSecurity: function (username) {
+      return apiRequest(
+        "GET",
+        "/admin/members/" + encodeURIComponent(username) + "/security"
+      );
+    },
     adminAudit: function (opts) {
       var params = [];
       if (opts) {

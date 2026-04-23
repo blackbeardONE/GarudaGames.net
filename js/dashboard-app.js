@@ -1511,6 +1511,7 @@
       : "";
     var platform = s.platform ? " · " + escapeHtml(s.platform) : "";
     var ip = s.ip ? " · " + escapeHtml(s.ip) : "";
+    var location = s.location ? " · " + escapeHtml(s.location) : "";
     var revokeBtn = s.isCurrent
       ? ""
       : '<button type="button" class="btn btn--ghost btn--sm" data-session-revoke="' +
@@ -1532,6 +1533,7 @@
       escapeHtml(formatRelative(s.lastSeenAt || s.createdAt)) +
       " · Signed in " +
       escapeHtml(formatRelative(s.createdAt)) +
+      location +
       "</div>" +
       '<div class="session-row__actions">' +
       revokeBtn +

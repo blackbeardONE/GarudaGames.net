@@ -4601,6 +4601,61 @@ body.admin-modal-open {
   border-radius: 4px;
 }
 
+.admin-security-panel {
+  margin: 0.75rem 0;
+  padding: 0.9rem 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+}
+.admin-sec-title {
+  margin: 0 0 0.3rem 0;
+  font-size: 1.05rem;
+}
+.admin-sec-subtitle {
+  margin: 1rem 0 0.35rem 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.admin-sec-profile {
+  color: var(--muted);
+  font-size: 0.88rem;
+  margin-bottom: 0.35rem;
+}
+.admin-sec-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.admin-sec-list li {
+  padding: 0.45rem 0.65rem;
+  border-left: 2px solid rgba(230, 178, 60, 0.45);
+  background: rgba(255, 255, 255, 0.025);
+  border-radius: 3px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.admin-sec-head {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.admin-sec-meta {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.admin-sec-body {
+  font-size: 0.85rem;
+  color: var(--fg);
+  margin-top: 0.2rem;
+}
+
 @media (max-width: 640px) {
   .news-form__row {
     grid-template-columns: 1fr;

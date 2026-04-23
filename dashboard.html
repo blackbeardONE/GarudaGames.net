@@ -239,6 +239,7 @@
                     placeholder="you@example.com"
                   />
                 </label>
+                <div id="profile-email-status" class="admin-hint" hidden></div>
                 <label>Squad
                   <select id="profile-squad" required>
                     <option value="Garuda Dark Phoenix">Garuda Dark Phoenix</option>
@@ -367,6 +368,85 @@
                 </div>
 
                 <p id="tfa-status" class="dash-upload-status" aria-live="polite"></p>
+              </div>
+
+              <div class="dash-form" id="sessions-card">
+                <h3 class="dash-form__sub">Active sessions</h3>
+                <p class="dash-card__hint">
+                  Every browser that's currently signed in to your account. If
+                  you see one you don't recognise, revoke it — it'll be signed
+                  out instantly.
+                </p>
+                <div id="sessions-list" class="sessions-list" aria-live="polite">
+                  Loading sessions…
+                </div>
+                <div class="sessions-actions">
+                  <button type="button" class="btn btn--ghost" id="sessions-refresh-btn">
+                    Refresh
+                  </button>
+                  <button type="button" class="btn btn--secondary" id="sessions-revoke-all-btn">
+                    Sign out all other devices
+                  </button>
+                </div>
+                <p id="sessions-status" class="dash-upload-status" aria-live="polite"></p>
+              </div>
+
+              <div class="dash-form" id="data-rights-card">
+                <h3 class="dash-form__sub">Your data</h3>
+                <p class="dash-card__hint">
+                  Download everything we've stored about your account,
+                  or delete the account entirely. See our
+                  <a href="privacy.html">Privacy Policy</a>
+                  for details on what's in the export and what we
+                  delete.
+                </p>
+                <div class="sessions-actions">
+                  <a class="btn btn--ghost" id="export-btn" href="/api/me/export" download>
+                    Export my data
+                  </a>
+                </div>
+
+                <div class="danger-zone">
+                  <h3>Delete my account</h3>
+                  <p class="dash-card__hint">
+                    This removes your profile, submissions, and
+                    notifications. Your name is scrubbed from audit
+                    logs. <strong>Irreversible.</strong>
+                  </p>
+                  <label for="delete-password">Current password</label>
+                  <input
+                    type="password"
+                    id="delete-password"
+                    autocomplete="current-password"
+                    placeholder="Re-enter your password"
+                  />
+                  <label for="delete-totp" id="delete-totp-label" hidden>
+                    Two-factor code
+                  </label>
+                  <input
+                    type="text"
+                    inputmode="numeric"
+                    pattern="[0-9]*"
+                    id="delete-totp"
+                    autocomplete="one-time-code"
+                    placeholder="6-digit code"
+                    maxlength="6"
+                    hidden
+                  />
+                  <label for="delete-confirm">
+                    Type your username to confirm
+                  </label>
+                  <input
+                    type="text"
+                    id="delete-confirm"
+                    placeholder="your username"
+                    autocomplete="off"
+                  />
+                  <button type="button" class="btn btn--danger" id="delete-account-btn">
+                    Delete my account permanently
+                  </button>
+                  <p id="delete-status" class="dash-upload-status" aria-live="polite"></p>
+                </div>
               </div>
             </div>
           </section>
@@ -637,6 +717,11 @@
       <div class="site-footer__inner">
         <span class="site-footer__brand">© Garuda Games</span>
         <span class="site-footer__note">Member dashboard · Garuda Games API</span>
+        <span class="site-footer__links">
+          <a href="privacy.html">Privacy</a>
+          ·
+          <a href="terms.html">Terms</a>
+        </span>
       </div>
     </footer>
 

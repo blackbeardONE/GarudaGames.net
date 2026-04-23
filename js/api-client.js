@@ -104,6 +104,29 @@
         usernameOrEmail: usernameOrEmail
       });
     },
+    verifyEmail: function (token) {
+      return apiRequest("POST", "/auth/verify-email", { token: token });
+    },
+    sendVerificationEmail: function () {
+      return apiRequest("POST", "/me/email/send-verification", {});
+    },
+    listSessions: function () {
+      return apiRequest("GET", "/me/sessions");
+    },
+    revokeSession: function (id) {
+      return apiRequest("DELETE", "/me/sessions/" + encodeURIComponent(id));
+    },
+    revokeAllOtherSessions: function () {
+      return apiRequest("POST", "/me/sessions/revoke-all", {});
+    },
+    deleteAccount: function (payload) {
+      return apiRequest("POST", "/me/delete", payload || {});
+    },
+    // Export uses a direct download URL since the server sets
+    // Content-Disposition; the browser handles the save dialog.
+    exportUrl: function () {
+      return "/api/me/export";
+    },
     adminIssueResetToken: function (username) {
       return apiRequest(
         "POST",

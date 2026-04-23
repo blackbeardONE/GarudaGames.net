@@ -88,6 +88,8 @@
       bindProfileForm();
       bindPasswordForm();
       bindTotp();
+      bindSessions();
+      bindDataRights();
       bindInboxBadge();
       bindDigitalIdModal();
       bindLogout();
@@ -293,6 +295,7 @@
     if (ign) ign.value = user.ign || "";
     if (name) name.value = user.realName || "";
     if (email) email.value = user.email || "";
+    renderEmailStatus();
     if (squad) {
       var has = false;
       for (var i = 0; i < squad.options.length; i++) {
@@ -353,6 +356,59 @@
             "Could not save photo: " + ((err && err.message) || "error");
         });
     });
+  }
+
+  // Render the "verified / verify now / not set" status block under the
+  // email field. The visible state drives off the /auth/me payload —
+  // hasEmail + emailVerified — and a "Resend verification" button that
+  // hits the new v1.8.0 endpoint.
+  function renderEmailStatus() {
+    var box = el("profile-email-status");
+    if (!box || !user) return;
+    if (!user.hasEmail) {
+      box.hidden = true;
+      box.innerHTML = "";
+      return;
+    }
+    box.hidden = false;
+    if (user.emailVerified) {
+      box.innerHTML =
+        '<span class="admin-inline-note admin-inline-note--ok">\u2713 Verified.</span>' +
+        " Self-service password reset is enabled for this address.";
+      return;
+    }
+    box.innerHTML =
+      '<span class="admin-inline-note admin-inline-note--warn">Not verified.</span> ' +
+      "Click the link we sent you; without that, password reset emails won't go to this address. " +
+      '<button type="button" class="btn btn--ghost btn--sm" id="profile-email-resend">Resend verification</button>' +
+      ' <span id="profile-email-resend-status" aria-live="polite"></span>';
+    var btn = el("profile-email-resend");
+    if (btn) {
+      btn.addEventListener("click", function () {
+        var s = el("profile-email-resend-status");
+        btn.disabled = true;
+        var oldLabel = btn.textContent;
+        btn.textContent = "Sending\u2026";
+        window.GarudaApi
+          .sendVerificationEmail()
+          .then(function (res) {
+            if (res && res.alreadyVerified) {
+              if (s) s.textContent = "already verified \u2014 refresh the page.";
+            } else if (s) {
+              s.textContent =
+                "sent. Check your inbox (and spam folder); the link expires in 24 hours.";
+            }
+          })
+          .catch(function (err) {
+            if (s)
+              s.textContent = (err && err.message) || "Could not send. Try again shortly.";
+          })
+          .finally(function () {
+            btn.disabled = false;
+            btn.textContent = oldLabel;
+          });
+      });
+    }
   }
 
   function bindProfileForm() {
@@ -1146,5 +1202,216 @@
       if (e.key !== "Escape") return;
       if (modal && !modal.hidden) closeDigitalIdModal();
     });
+  }
+
+  function bindDataRights() {
+    var btn = el("delete-account-btn");
+    var pw = el("delete-password");
+    var tot = el("delete-totp");
+    var totLabel = el("delete-totp-label");
+    var confirm = el("delete-confirm");
+    var status = el("delete-status");
+    if (!btn) return;
+
+    // Show the TOTP row only when 2FA is on.
+    if (user && user.totpEnabled) {
+      if (tot) tot.hidden = false;
+      if (totLabel) totLabel.hidden = false;
+    }
+
+    btn.addEventListener("click", function () {
+      if (status) status.textContent = "";
+      var confirmVal = confirm ? confirm.value.trim() : "";
+      if (confirmVal !== (user && user.username)) {
+        if (status)
+          status.textContent =
+            'Type your exact username in the confirmation box ("' +
+            (user && user.username) +
+            '") to proceed.';
+        return;
+      }
+      if (
+        !window.confirm(
+          "This will permanently delete your Garuda Games account. Are you sure?"
+        )
+      ) {
+        return;
+      }
+      btn.disabled = true;
+      var oldLabel = btn.textContent;
+      btn.textContent = "Deleting\u2026";
+      window.GarudaApi
+        .deleteAccount({
+          password: pw ? pw.value : "",
+          confirm: confirmVal,
+          totpCode: tot ? tot.value.trim() : "",
+        })
+        .then(function () {
+          window.location.href = "index.html?deleted=1";
+        })
+        .catch(function (err) {
+          if (status)
+            status.textContent = (err && err.message) || "Could not delete.";
+          btn.disabled = false;
+          btn.textContent = oldLabel;
+        });
+    });
+  }
+
+  function formatRelative(ts) {
+    if (!ts) return "never";
+    var s = Math.max(1, Math.round((Date.now() - Number(ts)) / 1000));
+    if (s < 60) return s + "s ago";
+    var m = Math.round(s / 60);
+    if (m < 60) return m + "m ago";
+    var h = Math.round(m / 60);
+    if (h < 24) return h + "h ago";
+    var d = Math.round(h / 24);
+    if (d < 14) return d + "d ago";
+    try {
+      return new Date(Number(ts)).toISOString().slice(0, 10);
+    } catch (_e) {
+      return "a while ago";
+    }
+  }
+
+  function renderSessionRow(s) {
+    var badge = s.isCurrent
+      ? '<span class="session-badge session-badge--current">This device</span>'
+      : "";
+    var platform = s.platform ? " · " + escapeHtml(s.platform) : "";
+    var ip = s.ip ? " · " + escapeHtml(s.ip) : "";
+    var revokeBtn = s.isCurrent
+      ? ""
+      : '<button type="button" class="btn btn--ghost btn--sm" data-session-revoke="' +
+        escapeHtml(s.id) +
+        '">Revoke</button>';
+    return (
+      '<li class="session-row">' +
+      '<div class="session-row__head">' +
+      '<strong>' +
+      escapeHtml(s.browser || "Browser") +
+      "</strong>" +
+      platform +
+      ip +
+      " " +
+      badge +
+      "</div>" +
+      '<div class="session-row__meta">' +
+      "Last seen " +
+      escapeHtml(formatRelative(s.lastSeenAt || s.createdAt)) +
+      " · Signed in " +
+      escapeHtml(formatRelative(s.createdAt)) +
+      "</div>" +
+      '<div class="session-row__actions">' +
+      revokeBtn +
+      "</div>" +
+      "</li>"
+    );
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return (
+        {
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        }[c] || c
+      );
+    });
+  }
+
+  function refreshSessions() {
+    var list = el("sessions-list");
+    if (!list) return Promise.resolve();
+    return window.GarudaApi.listSessions()
+      .then(function (res) {
+        var sessions = (res && res.sessions) || [];
+        if (!sessions.length) {
+          list.innerHTML =
+            '<p class="dash-card__hint">No active sessions. (That\u2019s odd \u2014 you\u2019re reading this.)</p>';
+          return;
+        }
+        list.innerHTML =
+          '<ul class="session-list">' +
+          sessions.map(renderSessionRow).join("") +
+          "</ul>";
+        var revokeBtns = list.querySelectorAll("[data-session-revoke]");
+        for (var i = 0; i < revokeBtns.length; i++) {
+          revokeBtns[i].addEventListener("click", handleSessionRevoke);
+        }
+      })
+      .catch(function (err) {
+        list.innerHTML =
+          '<p class="dash-card__hint">Could not load sessions: ' +
+          escapeHtml((err && err.message) || "unknown error") +
+          "</p>";
+      });
+  }
+
+  function handleSessionRevoke(e) {
+    var btn = e.currentTarget;
+    var id = btn.getAttribute("data-session-revoke");
+    var status = el("sessions-status");
+    btn.disabled = true;
+    btn.textContent = "Revoking\u2026";
+    window.GarudaApi.revokeSession(id)
+      .then(function () {
+        if (status) status.textContent = "Session revoked.";
+        return refreshSessions();
+      })
+      .catch(function (err) {
+        if (status)
+          status.textContent = (err && err.message) || "Could not revoke.";
+        btn.disabled = false;
+        btn.textContent = "Revoke";
+      });
+  }
+
+  function bindSessions() {
+    var refreshBtn = el("sessions-refresh-btn");
+    var revokeAllBtn = el("sessions-revoke-all-btn");
+    var status = el("sessions-status");
+    if (refreshBtn) {
+      refreshBtn.addEventListener("click", function () {
+        if (status) status.textContent = "";
+        refreshSessions();
+      });
+    }
+    if (revokeAllBtn) {
+      revokeAllBtn.addEventListener("click", function () {
+        if (
+          !confirm(
+            "Sign out every other device that's currently signed in? You'll stay signed in on this one."
+          )
+        ) {
+          return;
+        }
+        revokeAllBtn.disabled = true;
+        var oldLabel = revokeAllBtn.textContent;
+        revokeAllBtn.textContent = "Revoking\u2026";
+        window.GarudaApi.revokeAllOtherSessions()
+          .then(function (res) {
+            if (status)
+              status.textContent =
+                "Signed out " +
+                ((res && res.revoked) || 0) +
+                " other session(s).";
+            return refreshSessions();
+          })
+          .catch(function (err) {
+            if (status)
+              status.textContent = (err && err.message) || "Could not revoke.";
+          })
+          .finally(function () {
+            revokeAllBtn.disabled = false;
+            revokeAllBtn.textContent = oldLabel;
+          });
+      });
+    }
+    refreshSessions();
   }
 })();

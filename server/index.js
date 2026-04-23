@@ -588,6 +588,8 @@ function profileFromRow(row) {
     totpEnabled: !!row.totp_enabled,
     email: row.email || "",
     hasEmail: !!(row.email && String(row.email).trim()),
+    emailVerifiedAt: row.email_verified_at || null,
+    emailVerified: !!row.email_verified_at,
   };
 }
 
@@ -699,12 +701,32 @@ function setSessionCookie(res, sid) {
   });
 }
 
-function createSession(username) {
+// Keep session metadata compact. Browsers emit 200+ char UA strings
+// already; pushing the cap higher just bloats the table without adding
+// information our UI can render.
+const MAX_UA_LEN = 255;
+// Debounce last_seen_at bumps so every single XHR doesn't issue a DB
+// write. Sixty seconds is a good tradeoff — the sessions UI is
+// accurate-to-a-minute, which is more than precise enough to spot an
+// unknown session you want to kill.
+const LAST_SEEN_DEBOUNCE_MS = 60 * 1000;
+
+function createSession(username, { userAgent = "", ipAddress = "" } = {}) {
   const sid = crypto.randomBytes(32).toString("base64url");
   const now = Date.now();
   db.prepare(
-    `INSERT INTO sessions (id, username, created_at, expires_at) VALUES (?, ?, ?, ?)`
-  ).run(sid, username, now, now + SESSION_TTL_MS);
+    `INSERT INTO sessions
+       (id, username, created_at, expires_at, user_agent, ip_address, last_seen_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    sid,
+    username,
+    now,
+    now + SESSION_TTL_MS,
+    String(userAgent || "").slice(0, MAX_UA_LEN),
+    String(ipAddress || ""),
+    now
+  );
   return sid;
 }
 
@@ -749,6 +771,19 @@ function requireAuth(req, res, next) {
   }
   req.session = s;
   req.user = user;
+  // Debounced write of last_seen_at. Avoids a DB write on every XHR —
+  // the sessions UI only needs minute-level precision. Done in-line
+  // (synchronous, same transaction boundary as the authentication
+  // check) because better-sqlite3 is synchronous anyway; moving it to
+  // setImmediate would just complicate test determinism.
+  const now = Date.now();
+  if (!s.last_seen_at || now - s.last_seen_at >= LAST_SEEN_DEBOUNCE_MS) {
+    db.prepare(`UPDATE sessions SET last_seen_at = ? WHERE id = ?`).run(
+      now,
+      s.id
+    );
+    s.last_seen_at = now;
+  }
   next();
 }
 
@@ -964,7 +999,20 @@ app.post("/api/auth/register", authLimiter, async (req, res) => {
 
   auditLog("system", "user.register", username, {}, req.clientIp);
 
-  ok(res, { username, role, isFirst: false });
+  // Fire the "please confirm this address" mail on registration. The
+  // account is usable before confirmation — only the self-service
+  // password reset path requires a verified email. See Phase 8
+  // (v1.8.0) in the changelog.
+  if (email) {
+    issueEmailVerification(username, email, "system", req.clientIp);
+  }
+
+  ok(res, {
+    username,
+    role,
+    isFirst: false,
+    emailPending: !!email,
+  });
 });
 
 app.post("/api/auth/login", authLimiter, async (req, res) => {
@@ -1032,7 +1080,10 @@ app.post("/api/auth/login", authLimiter, async (req, res) => {
   }
 
   recordLoginAttempt(lockKey, true);
-  const sid = createSession(user.username);
+  const sid = createSession(user.username, {
+    userAgent: req.get("user-agent") || "",
+    ipAddress: req.clientIp || "",
+  });
   setSessionCookie(res, sid);
   auditLog(user.username, "auth.login.ok", null, {}, req.clientIp);
   ok(res, { user: profileFromRow(user) });
@@ -1152,6 +1203,7 @@ app.post("/api/me/2fa/verify", requireAuth, (req, res) => {
     "UPDATE users SET totp_enabled = 1 WHERE username = ?"
   ).run(req.user.username);
   auditLog(req.user.username, "2fa.enabled", null, {}, req.clientIp);
+  notifyAccountChange(req.user.username, "2fa.enable", req);
   ok(res, { enabled: true });
 });
 
@@ -1173,6 +1225,7 @@ app.post("/api/me/2fa/disable", requireAuth, (req, res) => {
     "UPDATE users SET totp_secret = '', totp_enabled = 0 WHERE username = ?"
   ).run(req.user.username);
   auditLog(req.user.username, "2fa.disabled", null, {}, req.clientIp);
+  notifyAccountChange(req.user.username, "2fa.disable", req);
   ok(res, { enabled: false });
 });
 
@@ -1202,6 +1255,355 @@ app.post(
 );
 
 // --------------------------------------------------------------------------
+// Active sessions list + revoke (v1.9.0)
+// --------------------------------------------------------------------------
+//
+// Gives the member a window into every cookie we're still honouring
+// for their account: when it was minted, when we last saw it, which
+// IP and (very short) browser fingerprint came with it. They can
+// revoke any individual session, or revoke everything except the
+// current one ("nuke all other devices"). A revoke-all also fires a
+// security notification to the verified email on file.
+
+// Condense a raw UA string into a human-friendly 1-token label. This
+// is shown to members, not used for security decisions. If the
+// fingerprint gets it wrong the worst case is "the UI calls Chrome
+// a Browser" — nothing breaks.
+function friendlyUserAgent(ua) {
+  const s = String(ua || "");
+  if (!s) return "Unknown browser";
+  if (/\bEdg\//.test(s)) return "Edge";
+  if (/\bOPR\//.test(s) || /\bOpera\//.test(s)) return "Opera";
+  if (/\bFirefox\//.test(s)) return "Firefox";
+  if (/\bCriOS\//.test(s)) return "Chrome (iOS)";
+  if (/\bChrome\//.test(s)) return "Chrome";
+  if (/\bSafari\//.test(s)) return "Safari";
+  if (/curl|wget|Postman|python|Go-http/i.test(s)) return "API client";
+  return "Browser";
+}
+
+function friendlyPlatform(ua) {
+  const s = String(ua || "");
+  if (/Windows/.test(s)) return "Windows";
+  if (/Macintosh|Mac OS X/.test(s)) return "macOS";
+  if (/iPhone|iPad|iPod/.test(s)) return "iOS";
+  if (/Android/.test(s)) return "Android";
+  if (/Linux/.test(s)) return "Linux";
+  return "";
+}
+
+// Hide the tail of an IP when rendering back to the user. Not
+// strictly a privacy requirement — members are looking at their own
+// sessions — but screenshots leak, and the coarse prefix is all you
+// need to tell sessions apart ("both on 203.0.113.x" vs "one on
+// some other ISP").
+function maskIp(ip) {
+  const s = String(ip || "");
+  if (!s) return "";
+  if (s.includes(".")) {
+    const parts = s.split(".");
+    if (parts.length === 4) return `${parts[0]}.${parts[1]}.${parts[2]}.x`;
+  }
+  if (s.includes(":")) {
+    const parts = s.split(":").filter(Boolean);
+    return parts.slice(0, 3).join(":") + ":…";
+  }
+  return s;
+}
+
+app.get("/api/me/sessions", requireAuth, (req, res) => {
+  const rows = db
+    .prepare(
+      `SELECT id, created_at, expires_at, user_agent, ip_address, last_seen_at
+         FROM sessions
+        WHERE username = ?
+        ORDER BY COALESCE(last_seen_at, created_at) DESC`
+    )
+    .all(req.user.username);
+  const currentId = req.session && req.session.id;
+  const shaped = rows.map((row) => ({
+    id: row.id,
+    // Short prefix is plenty for the UI to key off of — no reason to
+    // echo the whole secret even to the owner.
+    idShort: row.id.slice(0, 8),
+    createdAt: row.created_at,
+    expiresAt: row.expires_at,
+    lastSeenAt: row.last_seen_at,
+    browser: friendlyUserAgent(row.user_agent),
+    platform: friendlyPlatform(row.user_agent),
+    userAgent: String(row.user_agent || "").slice(0, 255),
+    ip: maskIp(row.ip_address),
+    isCurrent: row.id === currentId,
+  }));
+  ok(res, { sessions: shaped, currentId: currentId || null });
+});
+
+app.delete("/api/me/sessions/:id", requireAuth, (req, res) => {
+  const target = String(req.params.id || "");
+  if (!target) return fail(res, 400, "Missing session id.");
+  const row = db
+    .prepare(`SELECT id, username FROM sessions WHERE id = ?`)
+    .get(target);
+  if (!row || row.username !== req.user.username) {
+    // Don't tell the caller whether the session exists but belongs to
+    // somebody else — return the same generic 404 either way.
+    return fail(res, 404, "Session not found.");
+  }
+  const isCurrent = req.session && req.session.id === target;
+  db.prepare(`DELETE FROM sessions WHERE id = ?`).run(target);
+  auditLog(
+    req.user.username,
+    "session.revoke",
+    null,
+    { targetId: target.slice(0, 8), self: isCurrent },
+    req.clientIp
+  );
+  if (isCurrent) clearCookie(res);
+  ok(res, { revoked: true, isCurrent });
+});
+
+// --------------------------------------------------------------------------
+// Data rights: self-service export + account deletion (v1.10.0)
+// --------------------------------------------------------------------------
+
+// Build a single JSON document with everything we store about the
+// caller. Intentionally excludes password material (hash/salt/kdf),
+// the raw TOTP secret, and session ids beyond their short prefix.
+// The goal is "what we know about you", not "credentials a stranger
+// could reuse if this file leaks from your Downloads folder".
+function buildExport(username) {
+  const u = getUserByUsername(username);
+  if (!u) return null;
+  const strip = (row) => {
+    const copy = { ...row };
+    delete copy.password_hash;
+    delete copy.password_salt;
+    delete copy.password_kdf;
+    delete copy.totp_secret;
+    return copy;
+  };
+  const sessions = db
+    .prepare(
+      `SELECT id, created_at, expires_at, last_seen_at, user_agent, ip_address
+         FROM sessions WHERE username = ?
+        ORDER BY created_at DESC`
+    )
+    .all(username)
+    .map((s) => ({
+      idShort: s.id.slice(0, 8),
+      createdAt: s.created_at,
+      expiresAt: s.expires_at,
+      lastSeenAt: s.last_seen_at,
+      userAgent: s.user_agent,
+      ipAddress: s.ip_address,
+    }));
+  const achievements = db
+    .prepare(
+      `SELECT * FROM achievements WHERE username = ? ORDER BY created_at DESC`
+    )
+    .all(username);
+  const jlap = db
+    .prepare(
+      `SELECT * FROM jlap_submissions WHERE username = ? ORDER BY created_at DESC`
+    )
+    .all(username);
+  const idFlags = db
+    .prepare(
+      `SELECT * FROM id_flag_requests WHERE username = ? ORDER BY created_at DESC`
+    )
+    .all(username);
+  const notifications = db
+    .prepare(
+      `SELECT * FROM notifications WHERE username = ? ORDER BY created_at DESC`
+    )
+    .all(username);
+  const audit = db
+    .prepare(
+      `SELECT id, actor, action, target, detail_json, ip, created_at
+         FROM audit_log
+        WHERE actor = ? OR target = ?
+        ORDER BY created_at DESC
+        LIMIT 1000`
+    )
+    .all(username, username);
+  return {
+    schema: "garudagames.account-export.v1",
+    generatedAt: Date.now(),
+    profile: strip(u),
+    sessions,
+    achievements,
+    jlapSubmissions: jlap,
+    idFlagRequests: idFlags,
+    notifications,
+    auditTrail: audit,
+  };
+}
+
+app.get("/api/me/export", requireAuth, (req, res) => {
+  const data = buildExport(req.user.username);
+  if (!data) return fail(res, 500, "Could not assemble export.");
+  auditLog(req.user.username, "me.export", null, {}, req.clientIp);
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="garudagames-${req.user.username}-${Date.now()}.json"`
+  );
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.send(JSON.stringify(data, null, 2));
+});
+
+// Self-service account deletion. Destructive, so we require:
+//   - current password re-entered (this is not the "you're already
+//     signed in" shortcut — the 5-minute attacker sitting at your
+//     laptop shouldn't be able to nuke the account; the real owner
+//     typing their password should),
+//   - a valid TOTP code if 2FA is enabled,
+//   - an explicit confirmation string matching the username so the
+//     backend rejects accidental fetches.
+//
+// Admins are allowed to self-delete, but only if at least one other
+// admin remains — otherwise the club would be locked out of its own
+// admin panel with no recovery path short of a DB surgery.
+app.post("/api/me/delete", authLimiter, requireAuth, async (req, res) => {
+  const body = req.body || {};
+  const password = String(body.password || "");
+  const confirm = String(body.confirm || "").trim();
+  const totpCode = String(body.totpCode || "").trim();
+
+  if (confirm !== req.user.username) {
+    return fail(
+      res,
+      400,
+      `Type your username ("${req.user.username}") in the confirmation box to proceed.`
+    );
+  }
+  let good = false;
+  try {
+    good = await verifyPassword(
+      password,
+      req.user.password_salt,
+      req.user.password_hash,
+      req.user.password_kdf
+    );
+  } catch (_) {
+    good = false;
+  }
+  if (!good) {
+    auditLog(
+      req.user.username,
+      "me.delete.fail",
+      null,
+      { reason: "bad_password" },
+      req.clientIp
+    );
+    return fail(res, 401, "Password is incorrect.");
+  }
+  if (req.user.totp_enabled) {
+    if (!totp.verify(req.user.totp_secret || "", totpCode)) {
+      auditLog(
+        req.user.username,
+        "me.delete.fail",
+        null,
+        { reason: "bad_totp" },
+        req.clientIp
+      );
+      return fail(res, 401, "Invalid two-factor code.");
+    }
+  }
+  if (req.user.role === "admin") {
+    const remaining = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND username != ?`
+      )
+      .get(req.user.username);
+    if (!remaining || remaining.n < 1) {
+      return fail(
+        res,
+        400,
+        "You're the last admin. Promote another member to admin before deleting your account."
+      );
+    }
+  }
+
+  const username = req.user.username;
+  const hadVerifiedEmail = !!(req.user.email && req.user.email_verified_at);
+  const oldEmail = req.user.email || "";
+
+  // Tear down in a single transaction. The CASCADEs on sessions,
+  // achievements, jlap_submissions, id_flag_requests, and
+  // notifications do the heavy lifting; the explicit DELETEs below
+  // clean up tables that lack a FK back to users.
+  const tx = db.transaction(() => {
+    db.prepare(
+      `DELETE FROM password_reset_tokens WHERE username = ?`
+    ).run(username);
+    db.prepare(
+      `DELETE FROM email_verification_tokens WHERE username = ?`
+    ).run(username);
+    // Anonymise authored news posts rather than deleting them — the
+    // public feed shouldn't lose history because an author left.
+    db.prepare(
+      `UPDATE news_posts SET created_by = 'deleted_user' WHERE created_by = ?`
+    ).run(username);
+    // Anonymise audit trail rows. We keep the timeline (important for
+    // moderation reviews) but we're not holding the username as a
+    // personal identifier in perpetuity.
+    db.prepare(
+      `UPDATE audit_log SET actor = 'deleted_user' WHERE actor = ?`
+    ).run(username);
+    db.prepare(
+      `UPDATE audit_log SET target = 'deleted_user' WHERE target = ?`
+    ).run(username);
+    db.prepare(`DELETE FROM users WHERE username = ?`).run(username);
+  });
+  tx();
+
+  clearCookie(res);
+  auditLog("deleted_user", "me.delete.ok", null, { from: "self" }, req.clientIp);
+
+  // Belt-and-braces: fire a final "your account was deleted" notice
+  // to the address on file, if we had one proven, so a hijacker who
+  // made it this far still can't do it silently.
+  if (hadVerifiedEmail) {
+    mailer
+      .sendSecurityNotification({
+        to: oldEmail,
+        username,
+        event: "password.change", // event label is close enough; body is explicit
+        detail: "The Garuda Games account tied to this email was deleted.",
+        ip: req.clientIp,
+        when: Date.now(),
+      })
+      .catch(() => {});
+  }
+  ok(res, { deleted: true });
+});
+
+app.post("/api/me/sessions/revoke-all", requireAuth, (req, res) => {
+  const currentId = req.session && req.session.id;
+  const info = db
+    .prepare(
+      `DELETE FROM sessions WHERE username = ? AND id != ?`
+    )
+    .run(req.user.username, currentId || "");
+  auditLog(
+    req.user.username,
+    "session.revoke_all",
+    null,
+    { deleted: info.changes },
+    req.clientIp
+  );
+  if (info.changes > 0) {
+    notifyAccountChange(
+      req.user.username,
+      "sessions.revoke_all",
+      req,
+      `${info.changes} session${info.changes === 1 ? "" : "s"} ended`
+    );
+  }
+  ok(res, { revoked: info.changes });
+});
+
+// --------------------------------------------------------------------------
 // Password reset — admin-issued, one-shot tokens
 // --------------------------------------------------------------------------
 //
@@ -1221,9 +1623,89 @@ app.post(
 // reset link" endpoint can be grafted on top of the same token table.
 
 const RESET_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+const EMAIL_VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Fire-and-forget "something changed on your account" notification.
+ * Only sent when the target has a verified email on file — we
+ * deliberately do NOT notify unverified addresses because that's
+ * exactly the footgun v1.8.0 closed (an attacker sets a victim's
+ * address, then any security event spams the victim).
+ */
+function notifyAccountChange(username, event, req, detail = null) {
+  try {
+    const u = getUserByUsername(username);
+    if (!u || !u.email || !u.email_verified_at) return;
+    mailer
+      .sendSecurityNotification({
+        to: u.email,
+        username: u.username,
+        event,
+        detail: detail ? String(detail) : "",
+        ip: req && req.clientIp,
+        when: Date.now(),
+      })
+      .catch(() => {});
+  } catch (_err) {
+    // Never let a notification failure break the primary auth operation.
+  }
+}
 
 function generateResetToken() {
   return crypto.randomBytes(32).toString("base64url");
+}
+
+// Shared with the reset token generator — same cryptographic strength,
+// separate function name so the intent at each call site is obvious.
+function generateVerificationToken() {
+  return crypto.randomBytes(32).toString("base64url");
+}
+
+/**
+ * Issue a fresh email verification token for `username` <`email`>.
+ * Invalidates any previously-unused token for the same user in the
+ * same transaction. Fires the mailer fire-and-forget so a slow SMTP
+ * relay can't be used to probe account state via response timing.
+ * Audit log is written regardless of SMTP outcome.
+ */
+function issueEmailVerification(username, email, actor, clientIp) {
+  const now = Date.now();
+  const token = generateVerificationToken();
+  const expiresAt = now + EMAIL_VERIFY_TTL_MS;
+  const tx = db.transaction(() => {
+    db.prepare(
+      `UPDATE email_verification_tokens
+          SET used_at = ?
+        WHERE username = ? AND used_at IS NULL`
+    ).run(now, username);
+    db.prepare(
+      `INSERT INTO email_verification_tokens
+          (token, username, email, issued_at, expires_at)
+        VALUES (?, ?, ?, ?, ?)`
+    ).run(token, username, email, now, expiresAt);
+  });
+  tx();
+  mailer
+    .sendVerificationEmail({ to: email, username, token, expiresAt })
+    .then((result) => {
+      auditLog(
+        actor || username,
+        "auth.email_verification.issue",
+        username,
+        { via: result.via, sent: !!result.sent, email },
+        clientIp
+      );
+    })
+    .catch((err) => {
+      auditLog(
+        actor || username,
+        "auth.email_verification.issue",
+        username,
+        { via: "smtp", sent: false, error: String(err && err.message) },
+        clientIp
+      );
+    });
+  return { token, expiresAt };
 }
 
 app.post(
@@ -1342,15 +1824,23 @@ app.post("/api/auth/forgot-password", authLimiter, async (req, res) => {
     if (u) row = getUserByUsername(u);
   }
 
-  // Silent no-op for unknown accounts, and also for accounts with no
-  // email on file (we can't send anything). In both cases we still record
-  // a *low-severity* audit entry so unusual traffic is visible to ops.
-  if (!row || !row.email) {
+  // Silent no-op for unknown accounts, accounts with no email, and
+  // accounts whose email is present-but-unverified. The last case is
+  // the whole point of v1.8.0: without it, a hostile member could set
+  // their own `email` column to `victim@gmail.com` and redirect reset
+  // links to the victim. Admins can still mint a manual token via
+  // POST /api/admin/members/:u/reset-token, so unverified users
+  // aren't permanently locked out — they just have to talk to a
+  // human like they did before v1.7.0.
+  if (!row || !row.email || !row.email_verified_at) {
+    let reason = "no_user";
+    if (row && !row.email) reason = "no_email";
+    else if (row && row.email && !row.email_verified_at) reason = "email_unverified";
     auditLog(
       row ? row.username : "anon",
       "auth.forgot_password.noop",
       null,
-      { reason: row ? "no_email" : "no_user" },
+      { reason },
       req.clientIp
     );
     return res.status(200).json(GENERIC_OK);
@@ -1449,7 +1939,102 @@ app.post("/api/auth/reset-password", authLimiter, async (req, res) => {
     { via: "token" },
     req.clientIp
   );
+  notifyAccountChange(row.username, "password.reset", req);
   ok(res, { username: row.username });
+});
+
+// --------------------------------------------------------------------------
+// Email verification (v1.8.0)
+// --------------------------------------------------------------------------
+
+// Let a logged-in member request a fresh verification mail. Useful when
+// the original message got lost, or they waited >24h. Rate-limited by
+// the general authLimiter because this endpoint reaches out to SMTP.
+app.post(
+  "/api/me/email/send-verification",
+  authLimiter,
+  requireAuth,
+  (req, res) => {
+    const email = req.user.email || "";
+    if (!email) {
+      return fail(res, 400, "No email on file. Add one in your profile first.");
+    }
+    if (req.user.email_verified_at) {
+      return ok(res, { alreadyVerified: true, email });
+    }
+    const r = issueEmailVerification(
+      req.user.username,
+      email,
+      req.user.username,
+      req.clientIp
+    );
+    ok(res, {
+      email,
+      expiresAt: r.expiresAt,
+      expiresInMs: EMAIL_VERIFY_TTL_MS,
+      mailerEnabled: mailer.enabled(),
+    });
+  }
+);
+
+// Redeem a verification token. Public — the member might click the
+// link on a different device from the one they signed up on. We do
+// confirm the email in the token still matches what's on the user
+// row; if the member changed their email between issuance and click,
+// this token is dead and the UI shows a helpful error.
+app.post("/api/auth/verify-email", authLimiter, (req, res) => {
+  const token = String((req.body && req.body.token) || "").trim();
+  if (!token) return fail(res, 400, "Missing verification token.");
+  const row = db
+    .prepare(
+      `SELECT token, username, email, expires_at, used_at
+         FROM email_verification_tokens
+        WHERE token = ?`
+    )
+    .get(token);
+  const now = Date.now();
+  if (!row || row.used_at || row.expires_at < now) {
+    return fail(res, 400, "That verification link is invalid or has expired.");
+  }
+  const user = getUserByUsername(row.username);
+  if (!user) {
+    // User was deleted after the token was issued. Mark the token used
+    // to prevent it lingering and return the generic error.
+    db.prepare(
+      `UPDATE email_verification_tokens SET used_at = ? WHERE token = ?`
+    ).run(now, token);
+    return fail(res, 400, "That verification link is invalid or has expired.");
+  }
+  // The email on the user row must still match what the token was issued
+  // for. If it was changed, a new verification is pending somewhere else
+  // and this one is stale.
+  if ((user.email || "") !== row.email) {
+    db.prepare(
+      `UPDATE email_verification_tokens SET used_at = ? WHERE token = ?`
+    ).run(now, token);
+    return fail(
+      res,
+      400,
+      "That link was issued for a different email address. Request a fresh verification email from your dashboard."
+    );
+  }
+  const tx = db.transaction(() => {
+    db.prepare(
+      `UPDATE users SET email_verified_at = ? WHERE username = ?`
+    ).run(now, row.username);
+    db.prepare(
+      `UPDATE email_verification_tokens SET used_at = ? WHERE token = ?`
+    ).run(now, token);
+  });
+  tx();
+  auditLog(
+    row.username,
+    "auth.email_verification.complete",
+    null,
+    { email: row.email },
+    req.clientIp
+  );
+  ok(res, { username: row.username, email: row.email, verifiedAt: now });
 });
 
 // Unauthenticated "verify this person is a member" endpoint.
@@ -1670,17 +2255,29 @@ app.patch("/api/me/profile", requireAuth, (req, res) => {
   }
   // Members can set or clear their own email. Clearing is explicit:
   // empty string (or null) wipes the stored value; a non-empty value
-  // must pass validation.
+  // must pass validation. Any change to the address resets the
+  // `email_verified_at` flag — a proven-ownership click shouldn't
+  // carry over onto a different mailbox.
+  let emailChanged = false;
+  let newEmail = null;
   if (body.email != null) {
     const raw = String(body.email).trim();
+    const currentEmail = req.user.email || "";
     if (!raw) {
+      if (currentEmail) emailChanged = true;
       patch.email = "";
+      patch.email_verified_at = null;
     } else {
       const e = normEmail(raw);
       if (!e) {
         return fail(res, 400, "That email address doesn't look valid.");
       }
-      patch.email = e;
+      if (e !== currentEmail) {
+        emailChanged = true;
+        newEmail = e;
+        patch.email = e;
+        patch.email_verified_at = null;
+      }
     }
   }
   const keys = Object.keys(patch);
@@ -1691,7 +2288,39 @@ app.patch("/api/me/profile", requireAuth, (req, res) => {
     username: req.user.username,
   });
   const updated = getUserByUsername(req.user.username);
-  ok(res, { user: profileFromRow(updated) });
+  // If the email was changed, notify the *old* (verified) address
+  // before we issue the new verification token — the whole point of
+  // this notification is that the previous owner of the account,
+  // whose mailbox we can still reach, should hear about the change.
+  // The new address gets the standard verification flow from
+  // issueEmailVerification; no security notice to it because it isn't
+  // proven yet.
+  if (emailChanged && req.user.email && req.user.email_verified_at) {
+    mailer
+      .sendSecurityNotification({
+        to: req.user.email,
+        username: req.user.username,
+        event: "email.change",
+        detail: newEmail
+          ? `New address: ${newEmail}`
+          : "The email has been removed from the account.",
+        ip: req.clientIp,
+        when: Date.now(),
+      })
+      .catch(() => {});
+  }
+  if (emailChanged && newEmail) {
+    issueEmailVerification(
+      req.user.username,
+      newEmail,
+      req.user.username,
+      req.clientIp
+    );
+  }
+  ok(res, {
+    user: profileFromRow(updated),
+    emailPending: emailChanged && !!newEmail,
+  });
 });
 
 app.patch("/api/me/password", requireAuth, async (req, res) => {
@@ -1740,6 +2369,7 @@ app.patch("/api/me/password", requireAuth, async (req, res) => {
     {},
     req.clientIp
   );
+  notifyAccountChange(req.user.username, "password.change", req);
   ok(res, {});
 });
 

@@ -234,6 +234,14 @@
       fail(em, "That email address doesn't look valid.");
     }
 
+    var termsBox = document.getElementById("signup-terms");
+    if (termsBox && !termsBox.checked) {
+      fail(
+        termsBox,
+        "You need to agree to the Terms of Use and Privacy Policy to create an account."
+      );
+    }
+
     // Squad: required.
     var sqVal = sq ? sq.value : "";
     if (!sqVal) {

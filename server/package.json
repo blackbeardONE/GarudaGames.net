@@ -1,6 +1,6 @@
 {
   "name": "garuda-games-api",
-  "version": "1.7.0",
+  "version": "1.10.0",
   "description": "Garuda Games API: auth, members, submissions, verification, news, site custom.",
   "private": true,
   "main": "index.js",

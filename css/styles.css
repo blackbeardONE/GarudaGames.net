@@ -5217,6 +5217,75 @@ body.admin-modal-open {
   color: inherit;
 }
 
+.dash-jlap-status {
+  margin: 0 0 0.85rem;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(148, 163, 184, 0.08);
+  border-radius: 6px;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+.dash-jlap-status[hidden] {
+  display: none;
+}
+.dash-jlap-status__title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.25rem;
+  font-weight: 600;
+}
+.dash-jlap-status__dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: #94a3b8;
+  display: inline-block;
+}
+.dash-jlap-status__detail {
+  margin: 0;
+  color: #334155;
+}
+.dash-jlap-status__renew {
+  margin: 0.4rem 0 0;
+  font-size: 0.82rem;
+  color: #7c2d12;
+}
+.dash-jlap-status__renew[hidden] {
+  display: none;
+}
+.dash-jlap-status--ok {
+  border-color: rgba(16, 185, 129, 0.45);
+  background: rgba(16, 185, 129, 0.1);
+}
+.dash-jlap-status--ok .dash-jlap-status__dot {
+  background: #059669;
+}
+.dash-jlap-status--pending {
+  border-color: rgba(14, 165, 233, 0.45);
+  background: rgba(14, 165, 233, 0.1);
+}
+.dash-jlap-status--pending .dash-jlap-status__dot {
+  background: #0284c7;
+}
+.dash-jlap-status--warn {
+  border-color: rgba(234, 179, 8, 0.55);
+  background: rgba(234, 179, 8, 0.12);
+}
+.dash-jlap-status--warn .dash-jlap-status__dot {
+  background: #ca8a04;
+}
+.dash-jlap-status--expired,
+.dash-jlap-status--rejected {
+  border-color: rgba(239, 68, 68, 0.55);
+  background: rgba(239, 68, 68, 0.1);
+}
+.dash-jlap-status--expired .dash-jlap-status__dot,
+.dash-jlap-status--rejected .dash-jlap-status__dot {
+  background: #dc2626;
+}
+
 .dash-pro-games__list,
 .admin-pro-games__list {
   display: grid;

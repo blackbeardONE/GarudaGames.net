@@ -639,6 +639,27 @@
 
           <section class="dash-card dash-card--span2" aria-labelledby="dash-jlap-heading">
             <h2 id="dash-jlap-heading" class="dash-card__title">JLAP certification</h2>
+            <div
+              id="jlap-status-block"
+              class="dash-jlap-status"
+              role="status"
+              aria-live="polite"
+              hidden
+            >
+              <p class="dash-jlap-status__title">
+                <span class="dash-jlap-status__dot" aria-hidden="true"></span>
+                <span id="jlap-status-label">Certified Judge</span>
+              </p>
+              <p id="jlap-status-detail" class="dash-jlap-status__detail"></p>
+              <p
+                id="jlap-status-renew"
+                class="dash-jlap-status__renew"
+                hidden
+              >
+                Submit a fresh JLAP package below to renew before the
+                clock runs out.
+              </p>
+            </div>
             <p class="dash-card__hint">
               Upload your <strong>JLAP certificate</strong> and
               <strong>JLAP verification QR</strong> as separate images. A Verifier

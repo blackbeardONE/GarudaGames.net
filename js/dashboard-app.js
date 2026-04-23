@@ -184,7 +184,111 @@
   function refreshJlap() {
     return window.GarudaApi.listJlap().then(function (r) {
       jlap = (r && r.jlap) || [];
+      renderJlapStatus();
     });
+  }
+
+  // renderJlapStatus fills the #jlap-status-block with the user's
+  // current Certified Judge standing. It surfaces:
+  //   * remaining days until expiry for a live grant (>30d calm, 30/14/7
+  //     warn, <=0 expired), with a "Renew now" hint inside the window.
+  //   * a neutral line when a submission is still under review or was
+  //     rejected.
+  // The block stays hidden when there is no JLAP history at all so the
+  // card reads the same for brand-new users as it always did.
+  function renderJlapStatus() {
+    var block = el("jlap-status-block");
+    if (!block) return;
+    var label = el("jlap-status-label");
+    var detail = el("jlap-status-detail");
+    var renew = el("jlap-status-renew");
+
+    if (!jlap.length) {
+      block.hidden = true;
+      return;
+    }
+
+    var verified = null;
+    var pending = null;
+    var rejected = null;
+    for (var i = 0; i < jlap.length; i += 1) {
+      var row = jlap[i];
+      if (row.status === "verified" && !verified) verified = row;
+      else if (row.status === "pending" && !pending) pending = row;
+      else if (row.status === "rejected" && !rejected) rejected = row;
+    }
+
+    function setTone(toneClass) {
+      block.className = "dash-jlap-status " + toneClass;
+    }
+
+    if (pending) {
+      block.hidden = false;
+      setTone("dash-jlap-status--pending");
+      if (label) label.textContent = "JLAP under review";
+      if (detail)
+        detail.textContent =
+          "A Verifier will take a look. You'll be notified in your inbox.";
+      if (renew) renew.hidden = true;
+      return;
+    }
+
+    if (verified) {
+      block.hidden = false;
+      if (label) label.textContent = "Certified Judge";
+      if (verified.expiresAt) {
+        var now = Date.now();
+        var msLeft = verified.expiresAt - now;
+        var daysLeft = Math.floor(msLeft / (24 * 60 * 60 * 1000));
+        var expiryDate = new Date(verified.expiresAt).toLocaleDateString();
+        if (msLeft <= 0) {
+          setTone("dash-jlap-status--expired");
+          if (label) label.textContent = "Judge grant expired";
+          if (detail)
+            detail.textContent =
+              "Your JLAP grant expired on " +
+              expiryDate +
+              ". Submit a fresh package to restore the flag.";
+          if (renew) renew.hidden = false;
+        } else if (daysLeft <= 30) {
+          setTone("dash-jlap-status--warn");
+          if (detail)
+            detail.textContent =
+              "Expires " +
+              expiryDate +
+              " (" +
+              daysLeft +
+              " day" +
+              (daysLeft === 1 ? "" : "s") +
+              " left).";
+          if (renew) renew.hidden = false;
+        } else {
+          setTone("dash-jlap-status--ok");
+          if (detail)
+            detail.textContent = "Expires " + expiryDate + ".";
+          if (renew) renew.hidden = true;
+        }
+      } else {
+        setTone("dash-jlap-status--ok");
+        if (detail)
+          detail.textContent = "Verified. No expiry on file yet.";
+        if (renew) renew.hidden = true;
+      }
+      return;
+    }
+
+    if (rejected) {
+      block.hidden = false;
+      setTone("dash-jlap-status--rejected");
+      if (label) label.textContent = "JLAP not verified";
+      if (detail)
+        detail.textContent =
+          "Your last submission was not approved. You can upload a new package below.";
+      if (renew) renew.hidden = true;
+      return;
+    }
+
+    block.hidden = true;
   }
 
   function refreshIdFlags() {

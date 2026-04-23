@@ -1216,6 +1216,72 @@ function notify(username, kind, title, body, link) {
   }
 }
 
+// v1.25.0 — fan a single "new work in your queue" ping out to every
+// verifier + admin. Dedup so an already-unread notification of the
+// same kind is NOT replaced: the staff member hasn't acked the queue
+// yet, firing a second row would just be spam. Once the staff member
+// reads (or clears) the row, the next submission produces a fresh
+// unread notification and the cycle continues. `excludeUsername` lets
+// a trigger skip the acting user when they also hold a staff role
+// (they're the one who just created the row — no need to notify
+// themselves).
+function notifyStaff(
+  kind,
+  title,
+  body,
+  link,
+  { excludeUsername = "" } = {}
+) {
+  try {
+    const staff = db
+      .prepare(
+        `SELECT username FROM users
+          WHERE LOWER(role) IN ('verifier', 'admin')`
+      )
+      .all();
+    if (!staff.length) return 0;
+    const skip = String(excludeUsername || "").toLowerCase();
+    const findUnread = db.prepare(
+      `SELECT id FROM notifications
+        WHERE username = ? AND kind = ? AND read_at IS NULL
+        LIMIT 1`
+    );
+    const ins = db.prepare(
+      `INSERT INTO notifications (id, username, kind, title, body, link, created_at)
+       VALUES (@id, @username, @kind, @title, @body, @link, @created_at)`
+    );
+    const kindClean = String(kind || "queue").slice(0, 32);
+    const titleClean = String(title || "").slice(0, 160);
+    const bodyClean = String(body || "").slice(0, 512);
+    const linkClean = String(link || "").slice(0, 256);
+    const now = Date.now();
+    let created = 0;
+    const tx = db.transaction(() => {
+      for (const s of staff) {
+        const uname = String(s.username).toLowerCase();
+        if (uname === skip) continue;
+        if (findUnread.get(uname, kindClean)) continue;
+        ins.run({
+          id: uid("ntf_"),
+          username: uname,
+          kind: kindClean,
+          title: titleClean,
+          body: bodyClean,
+          link: linkClean,
+          created_at: now,
+        });
+        created++;
+      }
+    });
+    tx();
+    return created;
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error("notifyStaff failed:", e.message);
+    return 0;
+  }
+}
+
 // --------------------------------------------------------------------------
 // Sessions
 // --------------------------------------------------------------------------
@@ -3963,6 +4029,13 @@ app.post("/api/achievements", requireAuth, (req, res) => {
               @player_count, @rank_points, @challonge_url, @poster_data_url, @poster_sha256,
               @game, @status, @verifier_note, @created_at, @verified_at, @verified_by)`
   ).run(row);
+  notifyStaff(
+    "queue.achievement",
+    "New achievement to review",
+    'A new "' + eventName + '" submission needs a verifier.',
+    "verifier.html#achievements",
+    { excludeUsername: req.user.username }
+  );
   ok(res, { achievement: mapAchievement(row) });
 });
 
@@ -4303,6 +4376,13 @@ app.post("/api/jlap", requireAuth, (req, res) => {
     ) VALUES (@id, @username, @certificate_data_url, @certificate_sha256, @qr_data_url, @qr_sha256, @status,
               @verifier_note, @created_at, @verified_at, @verified_by)`
   ).run(row);
+  notifyStaff(
+    "queue.jlap",
+    "New JLAP package to review",
+    req.user.username + " submitted a JLAP certificate + QR.",
+    "verifier.html#jlap",
+    { excludeUsername: req.user.username }
+  );
   ok(res, { jlap: mapJlap(row) });
 });
 
@@ -4625,6 +4705,13 @@ app.post("/api/id-flags/request", requireAuth, (req, res) => {
   });
   tx();
 
+  notifyStaff(
+    "queue.idflags",
+    "New ID-flag request to review",
+    req.user.username + " requested an ID-flag change.",
+    "verifier.html#idflags",
+    { excludeUsername: req.user.username }
+  );
   ok(res, { request: mapIdFlag(row, { withEvidence: true }) });
 });
 
@@ -4918,6 +5005,17 @@ function fileAppeal(req, res, hostKey) {
     id,
     { chars: text.length },
     req.clientIp
+  );
+
+  notifyStaff(
+    "queue.appeal",
+    "New rejection appeal filed",
+    req.user.username +
+      " is appealing a rejected " +
+      host.label +
+      ". Review in the appeals queue.",
+    "verifier.html#appeals",
+    { excludeUsername: req.user.username }
   );
 
   const fresh = db.prepare(`SELECT * FROM ${host.table} WHERE id = ?`).get(id);

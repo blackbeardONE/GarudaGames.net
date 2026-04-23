@@ -24,6 +24,17 @@
     .requireRoleOrRedirect("admin", "dashboard.html")
     .then(function (user) {
       if (!user) return;
+      // v1.19.0 — pre-gate: admin without TOTP past the grace window
+      // gets a page-level block instead of a cascade of 403s on every
+      // widget below. The gate replaces the <main>, so nothing else
+      // renders when it fires.
+      var host = document.querySelector("main") || document.body;
+      if (
+        window.GarudaStaff2faGate &&
+        window.GarudaStaff2faGate.renderHardGate(user, host)
+      ) {
+        return;
+      }
       renderOverview();
       renderMembers();
       loadSiteForm();

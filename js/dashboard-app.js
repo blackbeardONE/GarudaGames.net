@@ -147,6 +147,9 @@
       user = u;
       renderProfile();
       renderDigitalId();
+      if (window.GarudaStaff2faGate) {
+        window.GarudaStaff2faGate.renderDashboardBanner(u, "staff-2fa-banner");
+      }
       hydrateProfileForm();
       bindPhotoUpload();
       bindAchievementForm();

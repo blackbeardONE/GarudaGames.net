@@ -47,6 +47,17 @@
       var navAdmin = el("nav-admin-verif");
       if (navAdmin) navAdmin.hidden = user.role !== "admin";
       bindLogout();
+      // v1.19.0 — pre-gate: staff without TOTP past the grace window
+      // gets a page-level block instead of a cascade of 403s. The gate
+      // replaces the main content, so the tabs/lightbox binding below
+      // wouldn't have anywhere to attach anyway.
+      var host = document.querySelector("main") || document.body;
+      if (
+        window.GarudaStaff2faGate &&
+        window.GarudaStaff2faGate.renderHardGate(user, host)
+      ) {
+        return;
+      }
       bindTabs();
       bindLightbox();
       renderAll();

@@ -36,6 +36,73 @@ const IS_PROD = NODE_ENV !== "development" && NODE_ENV !== "test";
 
 const COOKIE_NAME = "garuda_sid";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days (down from 30).
+
+// v1.19.0 — 2FA enforcement on staff routes.
+// Any user with role `verifier` or `admin` must have TOTP enabled before
+// they can hit verifier/admin API surface. The rollout is phased with
+// a grace window driven by env:
+//
+//   GARUDA_STAFF_2FA_GRACE_UNTIL — ISO-8601 date string (e.g.
+//     "2026-05-08") or epoch-ms number. While the clock is before this
+//     moment, staff without TOTP are allowed through (and the server
+//     logs a `admin.2fa-grace-hit` audit row the first time each day
+//     per user). After this moment, missing TOTP returns 403 with
+//     `{ reason: "2fa-required" }`.
+//
+// Unset = enforcement is live immediately (safe default). Invalid
+// value = treated as unset with a startup warning.
+function parseStaff2faGrace(raw) {
+  if (raw == null || raw === "") return null;
+  if (/^\d+$/.test(String(raw).trim())) return Number(raw);
+  const t = Date.parse(String(raw).trim());
+  if (!Number.isFinite(t)) {
+    console.warn(
+      "[v1.19] GARUDA_STAFF_2FA_GRACE_UNTIL is not parseable: " +
+        JSON.stringify(raw) +
+        " — treating as unset, 2FA enforced immediately."
+    );
+    return null;
+  }
+  return t;
+}
+// Cached module-load value (for the startup log only). The actual
+// enforcement path below calls currentStaff2faGrace() which re-reads
+// the env — that lets the operator adjust the grace window with a
+// service restart + env change without code edits, and gives tests a
+// hook to toggle the window mid-suite.
+const STAFF_2FA_GRACE_UNTIL_MS = parseStaff2faGrace(
+  process.env.GARUDA_STAFF_2FA_GRACE_UNTIL
+);
+if (STAFF_2FA_GRACE_UNTIL_MS != null && STAFF_2FA_GRACE_UNTIL_MS > Date.now()) {
+  console.log(
+    "[v1.19] staff 2FA enforcement in GRACE mode until " +
+      new Date(STAFF_2FA_GRACE_UNTIL_MS).toISOString()
+  );
+}
+
+function currentStaff2faGrace() {
+  return parseStaff2faGrace(process.env.GARUDA_STAFF_2FA_GRACE_UNTIL);
+}
+
+function isStaffRole(role) {
+  return role === "verifier" || role === "admin";
+}
+
+// staffTwoFactorStatus returns the object surfaced under
+// `profile.staffTwoFactor` on /api/me and the member fetchers. The UI
+// uses it to show a setup banner or a blocked-state pre-gate.
+function staffTwoFactorStatus(user) {
+  const required = isStaffRole(user && user.role);
+  const enabled = !!(user && user.totp_enabled);
+  const grace = currentStaff2faGrace();
+  return {
+    required,
+    enabled,
+    graceUntil: required && !enabled ? grace : null,
+    graceActive:
+      required && !enabled && grace != null && grace > Date.now(),
+  };
+}
 const SCRYPT_N = 1 << 15;
 const SCRYPT_R = 8;
 const SCRYPT_P = 1;
@@ -861,6 +928,11 @@ function profileFromRow(row) {
     hasEmail: !!(row.email && String(row.email).trim()),
     emailVerifiedAt: row.email_verified_at || null,
     emailVerified: !!row.email_verified_at,
+    // v1.19.0 — surfaces staff-2FA state so the dashboard + admin /
+    // verifier pages can render the setup banner (grace window) or the
+    // blocked-state pre-gate (post-grace). For non-staff users this
+    // reads `{ required: false, enabled, graceUntil: null }`.
+    staffTwoFactor: staffTwoFactorStatus(row),
   };
 }
 
@@ -1060,11 +1132,67 @@ function requireAuth(req, res, next) {
 
 function requireRole(minRole) {
   const order = { user: 0, verifier: 1, admin: 2 };
+  const minRank = order[minRole] || 0;
+  const gateIsStaff = minRank >= order.verifier;
   return (req, res, next) => {
     requireAuth(req, res, (err) => {
       if (err) return next(err);
-      if ((order[req.user.role] || 0) < (order[minRole] || 0)) {
+      if ((order[req.user.role] || 0) < minRank) {
         return fail(res, 403, "Forbidden.");
+      }
+      // v1.19.0 — block staff without TOTP once the grace window is
+      // over. A separate path logs a lower-severity grace-hit so we can
+      // see on the audit log exactly who's still operating without 2FA
+      // during the rollout window, but doesn't stop them from working.
+      if (gateIsStaff && isStaffRole(req.user.role) && !req.user.totp_enabled) {
+        const now = Date.now();
+        const graceUntil = currentStaff2faGrace();
+        const graceActive = graceUntil != null && graceUntil > now;
+        if (!graceActive) {
+          auditLog(
+            req.user.username,
+            "admin.2fa-denied",
+            req.user.username,
+            { role: req.user.role, path: req.originalUrl },
+            req.clientIp
+          );
+          return res.status(403).json({
+            ok: false,
+            error:
+              "Two-factor authentication is required for " +
+              req.user.role +
+              " accounts. Open the Dashboard and enable TOTP under Account -> Two-factor authentication before using " +
+              "staff tools.",
+            reason: "2fa-required",
+            graceUntil,
+          });
+        }
+        // Grace still active — log once per day per user to avoid
+        // filling the audit log with one row per API call. A simple
+        // dedup keyed on target + action + YYYY-MM-DD.
+        const today = new Date(now).toISOString().slice(0, 10);
+        const existing = db
+          .prepare(
+            `SELECT id FROM audit_log
+              WHERE target = ?
+                AND action = 'admin.2fa-grace-hit'
+                AND detail_json LIKE ?
+              LIMIT 1`
+          )
+          .get(req.user.username, '%"day":"' + today + '"%');
+        if (!existing) {
+          auditLog(
+            req.user.username,
+            "admin.2fa-grace-hit",
+            req.user.username,
+            {
+              role: req.user.role,
+              day: today,
+              graceUntil,
+            },
+            req.clientIp
+          );
+        }
       }
       next();
     });

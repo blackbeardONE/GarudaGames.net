@@ -5286,6 +5286,56 @@ body.admin-modal-open {
   background: #dc2626;
 }
 
+.staff-2fa-banner {
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(148, 163, 184, 0.08);
+}
+.staff-2fa-banner[hidden] {
+  display: none;
+}
+.staff-2fa-banner__title {
+  display: block;
+  margin: 0 0 0.3rem;
+  font-weight: 700;
+}
+.staff-2fa-banner__body {
+  margin: 0;
+  color: #334155;
+}
+.staff-2fa-banner--warn {
+  border-color: rgba(234, 179, 8, 0.55);
+  background: rgba(234, 179, 8, 0.12);
+}
+.staff-2fa-banner--bad {
+  border-color: rgba(239, 68, 68, 0.6);
+  background: rgba(239, 68, 68, 0.12);
+}
+.staff-2fa-gate {
+  max-width: 720px;
+  margin: 2.5rem auto;
+  padding: 1.5rem 1.75rem;
+  border: 1px solid rgba(239, 68, 68, 0.55);
+  background: rgba(239, 68, 68, 0.08);
+  border-radius: 10px;
+  line-height: 1.55;
+}
+.staff-2fa-gate__title {
+  margin: 0 0 0.75rem;
+  font-size: 1.35rem;
+  color: #991b1b;
+}
+.staff-2fa-gate code {
+  padding: 0.05rem 0.3rem;
+  background: rgba(15, 23, 42, 0.08);
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
 .dash-pro-games__list,
 .admin-pro-games__list {
   display: grid;

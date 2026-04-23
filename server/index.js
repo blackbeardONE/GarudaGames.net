@@ -696,6 +696,92 @@ function fail(res, status, message) {
   res.status(status).json({ ok: false, error: message });
 }
 
+// --------------------------------------------------------------------------
+// v1.21.0 — Tiny in-memory TTL + ETag cache for leaderboards.
+// --------------------------------------------------------------------------
+//
+// The `/api/leaderboard` and `/api/verifiers/leaderboard` endpoints run a
+// multi-join aggregate every request. On a low-RAM VPS that's fine at
+// launch and gets painful as the roster grows (N users x M achievements).
+//
+// Strategy:
+//   * Per-endpoint-per-query-string slot, keyed on (endpoint, qs).
+//   * Invalidated by a module-level `version` counter that every mutation
+//     that touches leaderboard shape bumps (`bumpLeaderboardVersion()`).
+//     ETag = base64(version + "/" + qshash) so a ?game=Beyblade%20X&
+//     season=2026-S2 URL gets its own ETag.
+//   * TTL=30s floor keeps the cache fresh even for hypothetical
+//     mutations we forgot to instrument. Plenty short to feel live.
+//
+// Tests flip `CACHE_ENABLED` to false to exercise the direct query path.
+const CACHE_TTL_MS = 30 * 1000;
+let CACHE_ENABLED = process.env.GARUDA_LEADERBOARD_CACHE !== "0";
+let leaderboardVersion = 1;
+const leaderboardCache = new Map(); // key -> { etag, body, version, fetchedAt }
+
+function bumpLeaderboardVersion() {
+  leaderboardVersion++;
+  // Don't clear the Map — stale entries are harmless (ETag mismatches on
+  // read) and the TTL sweep will evict them. Clearing would thrash under
+  // a burst of verifier activity.
+}
+
+function leaderboardEtag(version, key) {
+  // Weak ETag: quoted hash, `W/` prefix so proxies know it's semantic
+  // not byte-exact (we reserialise the JSON on every serve).
+  const h = crypto.createHash("sha256").update(key + ":" + version).digest("hex");
+  return 'W/"lb-' + h.slice(0, 16) + '"';
+}
+
+function serveLeaderboard(req, res, cacheKey, compute) {
+  if (!CACHE_ENABLED) {
+    res.set("Cache-Control", "no-store");
+    return ok(res, compute());
+  }
+  const now = Date.now();
+  const cached = leaderboardCache.get(cacheKey);
+  const fresh =
+    cached &&
+    cached.version === leaderboardVersion &&
+    now - cached.fetchedAt < CACHE_TTL_MS;
+
+  let etag, body;
+  if (fresh) {
+    etag = cached.etag;
+    body = cached.body;
+  } else {
+    body = compute();
+    etag = leaderboardEtag(leaderboardVersion, cacheKey);
+    leaderboardCache.set(cacheKey, {
+      etag,
+      body,
+      version: leaderboardVersion,
+      fetchedAt: now,
+    });
+    // Trim if the map grew unreasonably — we don't expect more than a
+    // few dozen distinct (game, season) combos.
+    if (leaderboardCache.size > 128) {
+      const cutoff = now - CACHE_TTL_MS * 4;
+      for (const [k, v] of leaderboardCache) {
+        if (v.fetchedAt < cutoff) leaderboardCache.delete(k);
+      }
+    }
+  }
+  res.set("ETag", etag);
+  res.set("Cache-Control", "public, max-age=30, must-revalidate");
+  res.set("Vary", "Cookie"); // be defensive: sessions don't change the body, but proxies shouldn't assume
+  const inm = req.headers["if-none-match"];
+  if (inm && inm === etag) {
+    return res.status(304).end();
+  }
+  return ok(res, body);
+}
+
+function __resetLeaderboardCacheForTests() {
+  leaderboardVersion = 1;
+  leaderboardCache.clear();
+}
+
 function normUser(u) {
   return String(u || "").trim().toLowerCase();
 }
@@ -3158,6 +3244,15 @@ app.get("/api/leaderboard", (req, res) => {
       ? ALLOWED_GAMES.find((g) => g.toLowerCase() === rawGame.toLowerCase()) || null
       : null;
   const window = parseSeasonWindow(req.query && req.query.season);
+  const cacheKey =
+    "lb:" +
+    (gameFilter || "all") +
+    ":" +
+    (window ? String((req.query && req.query.season) || "") : "all");
+  return serveLeaderboard(req, res, cacheKey, () => computeLeaderboard(req, gameFilter, window));
+});
+
+function computeLeaderboard(req, gameFilter, window) {
 
   const whereAchieve = ["a.status = 'verified'"];
   const whereParams = {};
@@ -3243,15 +3338,15 @@ app.get("/api/leaderboard", (req, res) => {
     }
     row.rank = rank;
   });
-  ok(res, {
+  return {
     leaderboard,
     filters: {
       game: gameFilter || "all",
       season: window ? String((req.query && req.query.season) || "") : "all",
     },
     availableGames: ALLOWED_GAMES.slice(),
-  });
-});
+  };
+}
 
 // v1.16.0: verifier leaderboard. Public, read-only. Ranks the people
 // who *did* the verifying — achievements + JLAPs + ID-flag requests
@@ -3269,9 +3364,16 @@ app.get("/api/verifiers/leaderboard", (req, res) => {
   const rawWindow = String((req.query && req.query.window) || "90d")
     .trim()
     .toLowerCase();
+  const windowLabel = rawWindow === "all" ? "all" : "90d";
+  const cacheKey = "vlb:" + windowLabel;
+  return serveLeaderboard(req, res, cacheKey, () =>
+    computeVerifierLeaderboard(windowLabel)
+  );
+});
+
+function computeVerifierLeaderboard(windowLabel) {
   const WINDOW_90D = 90 * 24 * 60 * 60 * 1000;
-  const windowStart =
-    rawWindow === "all" ? 0 : Date.now() - WINDOW_90D;
+  const windowStart = windowLabel === "all" ? 0 : Date.now() - WINDOW_90D;
 
   // The three tables that record a "verified" event carry the verifier's
   // username in `verified_by` and a timestamp in `verified_at`. A rejected
@@ -3332,12 +3434,12 @@ app.get("/api/verifiers/leaderboard", (req, res) => {
     row.rank = rank;
   }
 
-  ok(res, {
+  return {
     leaderboard,
-    window: rawWindow === "all" ? "all" : "90d",
+    window: windowLabel,
     generatedAt: Date.now(),
-  });
-});
+  };
+}
 
 function mapAchievement(r, opts) {
   const playerCount = r.player_count || 0;
@@ -3681,6 +3783,8 @@ app.patch("/api/achievements/:id", requireRole("verifier"), (req, res) => {
   });
   tx();
 
+  if (existing.status !== status) bumpLeaderboardVersion();
+
   auditLog(
     req.user.username,
     "achievement." + status,
@@ -3996,6 +4100,8 @@ app.patch("/api/jlap/:id", requireRole("verifier"), (req, res) => {
   });
   tx();
 
+  if (existing.status !== status || judgeGranted) bumpLeaderboardVersion();
+
   auditLog(
     req.user.username,
     "jlap." + status,
@@ -4291,6 +4397,7 @@ app.patch("/api/id-flags/:id", requireRole("verifier"), (req, res) => {
   tx();
 
   const approvedProGames = readProGames(existing);
+  if (existing.status !== status) bumpLeaderboardVersion();
   auditLog(
     req.user.username,
     "idflags." + status,
@@ -5796,4 +5903,11 @@ if (require.main === module) {
   });
 }
 
-module.exports = { app, db };
+module.exports = {
+  app,
+  db,
+  __resetLeaderboardCacheForTests,
+  __setLeaderboardCacheEnabledForTests: (v) => {
+    CACHE_ENABLED = !!v;
+  },
+};

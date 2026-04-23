@@ -227,11 +227,18 @@
     myIdFlags: function () {
       return apiRequest("GET", "/id-flags/me");
     },
+    // payload: { certifiedJudge, proGames, evidence: [{ game, league, photoDataUrl, linkUrl, note }] }
+    // `evidence` is required for every newly-claimed PRO pill (v1.14.0).
     requestIdFlags: function (payload) {
       return apiRequest("POST", "/id-flags/request", payload);
     },
     pendingIdFlags: function () {
       return apiRequest("GET", "/id-flags/pending");
+    },
+    // Full fetch for a single ID flag request including the base64 evidence
+    // photos. Used by the verifier lightbox and the owner's own dashboard.
+    getIdFlag: function (id) {
+      return apiRequest("GET", "/id-flags/" + encodeURIComponent(id));
     },
     reviewIdFlags: function (id, patch) {
       return apiRequest("PATCH", "/id-flags/" + encodeURIComponent(id), patch);

@@ -786,20 +786,35 @@
                 class="id-flags-review-note"
                 aria-live="polite"
               ></p>
-              <label class="dash-check">
-                <input type="checkbox" id="id-meta-judge" />
-                Certified Judge
-              </label>
+              <div class="id-judge-row">
+                <label class="dash-check">
+                  <input type="checkbox" id="id-meta-judge" />
+                  Certified Judge
+                </label>
+                <p id="id-judge-hint" class="dash-pro-games__help">
+                  Certified Judge is granted automatically when your
+                  <strong>JLAP certification</strong> package (below) is
+                  approved. Untick only if you want to relinquish the flag.
+                </p>
+              </div>
               <fieldset
                 class="dash-pro-games"
                 aria-describedby="id-meta-pro-help"
               >
                 <legend>Professional Games</legend>
                 <p id="id-meta-pro-help" class="dash-pro-games__help">
-                  Tick every game you're claiming a Pro status for. Each one
-                  still has to clear a verifier before the pill shows up.
+                  Tick every game you're claiming a Pro status for. Each new
+                  pill needs evidence: <strong>Beyblade X</strong> requires a
+                  PBBL / XT / XV league (Challonge link or event photo);
+                  every other game accepts a photo and/or a social-media
+                  post link.
                 </p>
                 <div id="id-meta-pro-list" class="dash-pro-games__list"></div>
+                <div
+                  id="id-meta-evidence"
+                  class="dash-pro-evidence"
+                  aria-live="polite"
+                ></div>
               </fieldset>
               <button
                 type="button"

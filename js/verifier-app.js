@@ -604,7 +604,83 @@
         var tdU = document.createElement("td");
         tdU.textContent = bladerName(r);
         var tdReq = document.createElement("td");
-        tdReq.textContent = reqText;
+
+        // Summary line + per-game evidence panel (v1.14.0). Evidence
+        // arrives in slim form on the queue; photos are lazy-loaded per
+        // click via GET /api/id-flags/:id so the queue stays light.
+        var summary = document.createElement("div");
+        summary.textContent = reqText;
+        tdReq.appendChild(summary);
+
+        var evidence = Array.isArray(r.evidence) ? r.evidence : [];
+        if (evidence.length) {
+          var panel = document.createElement("div");
+          panel.className = "verif-idflag-evidence";
+          evidence.forEach(function (ev) {
+            var item = document.createElement("div");
+            item.className = "verif-idflag-evidence__item";
+            var title = document.createElement("div");
+            var label = window.ProFlags
+              ? window.ProFlags.label(ev.game)
+              : "PRO " + ev.game;
+            title.textContent = label;
+            if (ev.league) {
+              var badge = document.createElement("span");
+              badge.className = "verif-idflag-evidence__badge";
+              badge.textContent =
+                ev.league +
+                (ev.leagueLabel ? " — " + ev.leagueLabel : "");
+              title.appendChild(badge);
+            }
+            item.appendChild(title);
+            if (ev.linkUrl) {
+              var linkLine = document.createElement("div");
+              var a = document.createElement("a");
+              a.href = ev.linkUrl;
+              a.target = "_blank";
+              a.rel = "noopener noreferrer";
+              a.className = "verif-idflag-evidence__link";
+              a.textContent = ev.linkUrl;
+              linkLine.appendChild(a);
+              item.appendChild(linkLine);
+            }
+            if (ev.hasPhoto) {
+              (function (reqId, game) {
+                item.appendChild(
+                  previewLink(
+                    "View photo",
+                    function () {
+                      return window.GarudaApi
+                        .getIdFlag(reqId)
+                        .then(function (resp) {
+                          var list =
+                            (resp && resp.request && resp.request.evidence) || [];
+                          var match = list.filter(function (e) {
+                            return e.game === game && e.photoDataUrl;
+                          })[0];
+                          return match ? match.photoDataUrl : "";
+                        });
+                    },
+                    bladerName(r) + " — " + label
+                  )
+                );
+              })(r.id, ev.game);
+            }
+            if (ev.note) {
+              var noteLine = document.createElement("div");
+              noteLine.textContent = "Note: " + ev.note;
+              item.appendChild(noteLine);
+            }
+            if (!ev.linkUrl && !ev.hasPhoto) {
+              var warnLine = document.createElement("div");
+              warnLine.textContent = "(no photo or link attached)";
+              item.appendChild(warnLine);
+            }
+            panel.appendChild(item);
+          });
+          tdReq.appendChild(panel);
+        }
+
         tr.appendChild(tdU);
         tr.appendChild(tdReq);
         tr.appendChild(tdAct);

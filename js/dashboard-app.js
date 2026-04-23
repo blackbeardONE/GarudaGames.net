@@ -897,9 +897,147 @@
     });
   }
 
+  // v1.14.0 per-game evidence sub-form. For every newly-ticked PRO game
+  // (i.e. one that's NOT already in the user's verified list), the panel
+  // renders a photo + link input; Beyblade X also requires a league
+  // picker (PBBL/XT/XV). Evidence for already-verified games is not
+  // required — the server only validates *added* games.
+  function gameSlug(name) {
+    return String(name || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
+  function renderEvidencePanel(selectedGames, verifiedGames) {
+    var host = el("id-meta-evidence");
+    if (!host) return;
+    var verifiedSet = Object.create(null);
+    (verifiedGames || []).forEach(function (g) {
+      var c = window.ProFlags ? window.ProFlags.canonical(g) : g;
+      if (c) verifiedSet[c] = true;
+    });
+    var addedGames = (selectedGames || []).filter(function (g) {
+      return !verifiedSet[g];
+    });
+    // Preserve current user input when re-rendering (ticking a second box
+    // shouldn't clear the first box's link field).
+    var prevState = Object.create(null);
+    Array.prototype.forEach.call(
+      host.querySelectorAll(".dash-pro-evidence__item"),
+      function (node) {
+        var g = node.dataset.game;
+        prevState[g] = {
+          league: (node.querySelector('[data-role="league"]') || {}).value || "",
+          link: (node.querySelector('[data-role="link"]') || {}).value || "",
+          note: (node.querySelector('[data-role="note"]') || {}).value || "",
+          // Photo input cannot be programmatically re-populated for
+          // security reasons; the user will have to re-pick the file if
+          // the node is re-rendered. Ticking boxes one-by-one avoids it.
+        };
+      }
+    );
+    if (!addedGames.length) {
+      host.innerHTML = "";
+      host.hidden = true;
+      return;
+    }
+    host.hidden = false;
+    host.innerHTML = addedGames
+      .map(function (g) {
+        var slug = gameSlug(g);
+        var esc = function (s) {
+          return String(s == null ? "" : s).replace(/"/g, "&quot;");
+        };
+        var pst = prevState[g] || {};
+        var isBBX = g === "Beyblade X";
+        var leagueRow = isBBX
+          ? '<label class="dash-pro-evidence__field">' +
+              "League" +
+              '<select data-role="league" id="ev-' + slug + '-league">' +
+                '<option value="">Pick the circuit…</option>' +
+                '<option value="PBBL"' + (pst.league === "PBBL" ? " selected" : "") +
+                  ">PBBL — Philippine Beyblade Battle League</option>" +
+                '<option value="XT"' + (pst.league === "XT" ? " selected" : "") +
+                  ">XT — Xtreme Throwdown</option>" +
+                '<option value="XV"' + (pst.league === "XV" ? " selected" : "") +
+                  ">XV — Xtreme Vertex</option>" +
+              "</select>" +
+            "</label>"
+          : "";
+        var linkLabel = isBBX ? "Challonge bracket URL" : "Social-media post URL";
+        var linkPlaceholder = isBBX
+          ? "https://challonge.com/…"
+          : "https://facebook.com/… or any FB / X / IG / TikTok / YouTube post";
+        return (
+          '<div class="dash-pro-evidence__item" data-game="' + esc(g) + '">' +
+          '<div class="dash-pro-evidence__head">Evidence for PRO ' + esc(g) + "</div>" +
+          leagueRow +
+          '<label class="dash-pro-evidence__field">' +
+            "Photo (JPG/PNG, optional if link provided)" +
+            '<input type="file" accept="image/*" data-role="photo" />' +
+          "</label>" +
+          '<label class="dash-pro-evidence__field">' +
+            esc(linkLabel) +
+            '<input type="url" inputmode="url" data-role="link" ' +
+              'placeholder="' + esc(linkPlaceholder) + '" ' +
+              'value="' + esc(pst.link) + '" />' +
+          "</label>" +
+          '<label class="dash-pro-evidence__field">' +
+            "Optional note (event, round, date)" +
+            '<input type="text" maxlength="500" data-role="note" ' +
+              'value="' + esc(pst.note) + '" />' +
+          "</label>" +
+          "</div>"
+        );
+      })
+      .join("");
+  }
+
+  // Read the current evidence panel into the payload shape expected by
+  // POST /api/id-flags/request. Photos are compressed to stay under the
+  // MAX_POSTER_URL server cap. Returns a promise resolving to an array of
+  // evidence entries (one per newly-ticked game).
+  function collectEvidencePayload() {
+    var host = el("id-meta-evidence");
+    if (!host || host.hidden) return Promise.resolve([]);
+    var items = Array.prototype.slice.call(
+      host.querySelectorAll(".dash-pro-evidence__item")
+    );
+    if (!items.length) return Promise.resolve([]);
+    var jobs = items.map(function (node) {
+      var game = node.dataset.game || "";
+      var leagueEl = node.querySelector('[data-role="league"]');
+      var photoEl = node.querySelector('[data-role="photo"]');
+      var linkEl = node.querySelector('[data-role="link"]');
+      var noteEl = node.querySelector('[data-role="note"]');
+      var league = leagueEl ? leagueEl.value : "";
+      var link = linkEl ? linkEl.value.trim() : "";
+      var note = noteEl ? noteEl.value.trim() : "";
+      var file = photoEl && photoEl.files && photoEl.files[0];
+      var entry = {
+        game: game,
+        league: league,
+        linkUrl: link,
+        note: note,
+        photoDataUrl: "",
+      };
+      if (!file) return Promise.resolve(entry);
+      return window.GarudaImageUtils
+        .compressImageFile(file, { maxSide: 1400, quality: 0.75 })
+        .then(function (dataUrl) {
+          entry.photoDataUrl = dataUrl || "";
+          return entry;
+        })
+        .catch(function () { return entry; });
+    });
+    return Promise.all(jobs);
+  }
+
   function refreshIdFlagControls() {
     ensureProGamesList();
     var cj = el("id-meta-judge");
+    var judgeHint = el("id-judge-hint");
     var btn = el("id-meta-save");
     var note = el("id-flags-review-note");
     var pending = idFlagsState && idFlagsState.pending;
@@ -927,27 +1065,42 @@
       }
     }
 
-    if (pending) {
-      if (cj) {
+    // The Judge checkbox is now read-only unless the user already has the
+    // flag (in which case they can untick to self-relinquish). New Judge
+    // claims must go through the JLAP upload card.
+    if (cj) {
+      if (pending) {
         cj.checked = !!pending.certifiedJudge;
         cj.disabled = true;
+      } else {
+        cj.checked = verifiedCj;
+        cj.disabled = !verifiedCj; // only togglable while currently a judge
       }
+    }
+    if (judgeHint) judgeHint.hidden = !!verifiedCj && !pending;
+
+    if (pending) {
       setProSelection(
         pending.proGames ||
           (pending.professionalBlader ? ["Beyblade X"] : [])
       );
       setProDisabled(true);
+      renderEvidencePanel([], verifiedPro);
+      var evHost = el("id-meta-evidence");
+      if (evHost) {
+        evHost.hidden = false;
+        evHost.innerHTML =
+          '<p class="dash-pro-games__help">Evidence for this request is ' +
+          "locked while a Verifier reviews it.</p>";
+      }
       if (btn) {
         btn.disabled = true;
         btn.textContent = "Awaiting verification";
       }
     } else {
-      if (cj) {
-        cj.disabled = false;
-        cj.checked = verifiedCj;
-      }
       setProSelection(verifiedPro);
       setProDisabled(false);
+      renderEvidencePanel(verifiedPro, verifiedPro);
       if (btn) {
         btn.disabled = false;
         btn.textContent = "Submit for verification";
@@ -960,17 +1113,39 @@
     var cj = el("id-meta-judge");
     var btn = el("id-meta-save");
     if (!btn) return;
+
+    // Every time a PRO-game checkbox flips, re-render the evidence panel
+    // so inputs for newly-added games appear (and inputs for un-ticked
+    // games disappear) in real time.
+    proCheckboxes().forEach(function (cb) {
+      cb.addEventListener("change", function () {
+        var verifiedPro =
+          (idFlagsState && idFlagsState.verified.proGames) ||
+          (idFlagsState && idFlagsState.verified.professionalBlader
+            ? ["Beyblade X"]
+            : []);
+        var selected = proCheckboxes()
+          .filter(function (c) { return c.checked; })
+          .map(function (c) { return c.dataset.proGame; });
+        renderEvidencePanel(selected, verifiedPro);
+      });
+    });
+
     btn.addEventListener("click", function () {
       var st = el("id-meta-status");
       var wantCj = !!(cj && cj.checked);
       var wantPro = proCheckboxes()
         .filter(function (c) { return c.checked; })
         .map(function (c) { return c.dataset.proGame; });
-      if (st) st.textContent = "Submitting…";
-      window.GarudaApi
-        .requestIdFlags({
-          certifiedJudge: wantCj,
-          proGames: wantPro
+      if (st) st.textContent = "Preparing evidence…";
+      collectEvidencePayload()
+        .then(function (evidence) {
+          if (st) st.textContent = "Submitting…";
+          return window.GarudaApi.requestIdFlags({
+            certifiedJudge: wantCj,
+            proGames: wantPro,
+            evidence: evidence,
+          });
         })
         .then(function () {
           if (st)

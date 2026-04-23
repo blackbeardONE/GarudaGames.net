@@ -5080,6 +5080,91 @@ body.admin-modal-open {
   margin: 0;
 }
 
+/* v1.14.0: Per-game PRO evidence sub-form. Rendered by dashboard-app.js as
+   one card per newly-ticked game. Beyblade X cards also carry a
+   league select (PBBL/XT/XV); every game accepts a photo and/or a link.
+   Layout stacks on narrow viewports so the verifier queue screenshots
+   stay readable. */
+.dash-pro-evidence {
+  margin-top: 0.9rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.dash-pro-evidence__item {
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  border-radius: 10px;
+  padding: 0.75rem 0.85rem;
+  background: rgba(111, 213, 255, 0.04);
+  display: grid;
+  gap: 0.55rem;
+}
+
+.dash-pro-evidence__head {
+  font-weight: 600;
+  color: #6fd5ff;
+  font-size: 0.95rem;
+}
+
+.dash-pro-evidence__field {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.dash-pro-evidence__field input[type="url"],
+.dash-pro-evidence__field input[type="text"],
+.dash-pro-evidence__field select {
+  width: 100%;
+  min-height: 36px;
+  padding: 0.35rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.12));
+  background: var(--card, rgba(0, 0, 0, 0.25));
+  color: var(--text, #fff);
+  font: inherit;
+}
+
+.id-judge-row {
+  display: grid;
+  gap: 0.25rem;
+  margin-bottom: 0.6rem;
+}
+
+/* Verifier-side: compact evidence list under each pending ID flag request.
+   Photos load on click (via GET /api/id-flags/:id) so the queue stays
+   fast. */
+.verif-idflag-evidence {
+  margin-top: 0.4rem;
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.verif-idflag-evidence__item {
+  border-left: 3px solid #6fd5ff;
+  padding: 0.25rem 0.5rem;
+  background: rgba(111, 213, 255, 0.05);
+  border-radius: 0 6px 6px 0;
+}
+
+.verif-idflag-evidence__badge {
+  display: inline-block;
+  margin-left: 0.3rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  border: 1px solid rgba(252, 221, 94, 0.4);
+  background: rgba(252, 221, 94, 0.08);
+  color: #fcdd5e;
+  font-size: 0.75rem;
+}
+
+.verif-idflag-evidence__link {
+  color: #6fd5ff;
+  word-break: break-all;
+}
+
 /* Digital-ID line that lists the approved PRO-game pills. Uses flex-wrap so
    a member with several PRO flags still reads cleanly on the ID card. */
 .digital-id-card__pro-line {

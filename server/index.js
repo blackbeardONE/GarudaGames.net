@@ -126,6 +126,33 @@ const ALLOWED_GAMES = Object.freeze([
   "Valorant",
 ]);
 
+// Recognised Beyblade X league circuits. A PRO Beyblade X pill can only be
+// claimed with evidence from one of these (PBBL = Philippine Beyblade
+// Battle League, XT = Xtreme Throwdown, XV = Xtreme Vertex). See v1.14.0.
+const BEYBLADE_LEAGUES = Object.freeze(["PBBL", "XT", "XV"]);
+const BEYBLADE_LEAGUE_LABELS = Object.freeze({
+  PBBL: "Philippine Beyblade Battle League",
+  XT: "Xtreme Throwdown",
+  XV: "Xtreme Vertex",
+});
+const MAX_EVIDENCE_NOTE = 500;
+const MAX_EVIDENCE_URL = 2000;
+// Social-post host allow-list used when evidence is a link rather than a
+// photo. Kept deliberately short so random short-link services can't be
+// used to hide the actual destination from a reviewer.
+const SOCIAL_LINK_HOSTS = Object.freeze([
+  "facebook.com",
+  "fb.com",
+  "fb.watch",
+  "instagram.com",
+  "tiktok.com",
+  "x.com",
+  "twitter.com",
+  "youtube.com",
+  "youtu.be",
+  "threads.net",
+]);
+
 function normalizeGame(value) {
   const s = String(value || "").trim();
   if (!s) return "Beyblade X";
@@ -179,6 +206,112 @@ function proGamesEqual(a, b) {
   if (na.length !== nb.length) return false;
   for (let i = 0; i < na.length; i++) if (na[i] !== nb[i]) return false;
   return true;
+}
+
+// Best-effort extraction of the bare hostname for a user-supplied URL so we
+// can compare against the SOCIAL_LINK_HOSTS allow-list. Returns "" if the
+// string is not a parseable http/https URL.
+function urlHost(raw) {
+  try {
+    const u = new URL(String(raw || "").trim());
+    if (u.protocol !== "http:" && u.protocol !== "https:") return "";
+    return u.hostname.toLowerCase().replace(/^www\./, "");
+  } catch (_) {
+    return "";
+  }
+}
+
+function isChallongeUrl(raw) {
+  const host = urlHost(raw);
+  return host === "challonge.com" || host.endsWith(".challonge.com");
+}
+
+function isSocialPostUrl(raw) {
+  const host = urlHost(raw);
+  if (!host) return false;
+  return SOCIAL_LINK_HOSTS.some((h) => host === h || host.endsWith("." + h));
+}
+
+// Shape-guard an entry from the client's `evidence: [...]` array on an
+// /api/id-flags/request payload. Unknown games, bogus leagues, and
+// over-long strings are scrubbed out silently so a malformed client
+// can't DoS the verifier queue with giant images. The caller is still
+// responsible for enforcing *which* games need evidence.
+function sanitizeEvidenceEntry(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const game = normalizeGame(raw.game || "");
+  if (!game) return null;
+  const leagueIn = String(raw.league || "").trim().toUpperCase();
+  const photo = String(raw.photoDataUrl || "").slice(0, MAX_POSTER_URL);
+  const link = String(raw.linkUrl || "").trim().slice(0, MAX_EVIDENCE_URL);
+  const note = String(raw.note || "").trim().slice(0, MAX_EVIDENCE_NOTE);
+  return {
+    game,
+    league:
+      game === "Beyblade X" && BEYBLADE_LEAGUES.includes(leagueIn)
+        ? leagueIn
+        : "",
+    photoDataUrl: photo,
+    linkUrl: link,
+    note,
+  };
+}
+
+// Enforce the per-game evidence policy for a *newly-added* PRO pill. Games
+// that are already on the user's profile can be re-submitted without fresh
+// evidence (idempotent no-op); it's only genuinely new claims that need to
+// arrive with proof. Returns an empty string on success, or a human-friendly
+// reason string that maps directly to a 400 response.
+function validateNewGameEvidence(game, ev) {
+  if (!ev) {
+    if (game === "Beyblade X") {
+      return (
+        "PRO Beyblade X needs evidence from a PBBL, XT, or XV event " +
+        "(a Challonge bracket link or a photo from the venue)."
+      );
+    }
+    return (
+      "PRO " + game + " needs a photo OR a social-media post link " +
+      "(Facebook, X/Twitter, Instagram, TikTok, or YouTube) showing you " +
+      "represented the game at a recognised event."
+    );
+  }
+  const hasPhoto = !!ev.photoDataUrl;
+  const hasLink = !!ev.linkUrl;
+  if (game === "Beyblade X") {
+    if (!ev.league) {
+      return (
+        "PRO Beyblade X requires a league: PBBL (Philippine Beyblade " +
+        "Battle League), XT (Xtreme Throwdown), or XV (Xtreme Vertex)."
+      );
+    }
+    if (!hasPhoto && !hasLink) {
+      return (
+        "PRO Beyblade X needs a Challonge bracket link OR a photo from " +
+        "the league event."
+      );
+    }
+    if (hasLink && !hasPhoto && !isChallongeUrl(ev.linkUrl)) {
+      return (
+        "PRO Beyblade X bracket link must be a challonge.com URL, or " +
+        "submit a photo from the event instead."
+      );
+    }
+    return "";
+  }
+  if (!hasPhoto && !hasLink) {
+    return (
+      "PRO " + game + " needs a photo or a social-media post link."
+    );
+  }
+  if (hasLink && !hasPhoto && !isSocialPostUrl(ev.linkUrl)) {
+    return (
+      "PRO " + game + " link must point to a public Facebook, X/Twitter, " +
+      "Instagram, TikTok, YouTube, or Threads post — or submit a photo " +
+      "instead."
+    );
+  }
+  return "";
 }
 
 // Squad-level title. Distinct from the system role (user / verifier / admin)
@@ -3054,9 +3187,40 @@ function mapJlap(r, opts) {
   return base;
 }
 
-function mapIdFlag(r) {
+// Fetch all evidence rows for an id_flag_requests row. `withPhoto=false`
+// returns the slim list view the verifier queue needs (booleans only so
+// the JSON stays small); `withPhoto=true` returns the full base64 data URL
+// for the lightbox preview on /api/id-flags/:id.
+function loadEvidenceForRequest(requestId, withPhoto) {
+  const rows = db
+    .prepare(
+      `SELECT id, request_id, game, league, photo_data_url, link_url, note, created_at
+         FROM id_flag_evidence
+        WHERE request_id = ?
+        ORDER BY created_at ASC`
+    )
+    .all(requestId);
+  return rows.map((r) => {
+    const photo = r.photo_data_url || "";
+    const out = {
+      id: r.id,
+      requestId: r.request_id,
+      game: r.game,
+      league: r.league || "",
+      leagueLabel: BEYBLADE_LEAGUE_LABELS[r.league] || "",
+      linkUrl: r.link_url || "",
+      hasPhoto: !!photo,
+      note: r.note || "",
+      createdAt: r.created_at,
+    };
+    if (withPhoto) out.photoDataUrl = photo;
+    return out;
+  });
+}
+
+function mapIdFlag(r, opts) {
   const proGames = readProGames(r);
-  return {
+  const base = {
     id: r.id,
     username: r.username,
     ign: r.user_ign || "",
@@ -3070,6 +3234,10 @@ function mapIdFlag(r) {
     verifiedAt: r.verified_at,
     verifiedBy: r.verified_by,
   };
+  if (opts && opts.withEvidence) {
+    base.evidence = loadEvidenceForRequest(r.id, !!opts.withPhotos);
+  }
+  return base;
 }
 
 app.get("/api/achievements", requireAuth, (req, res) => {
@@ -3522,31 +3690,66 @@ app.patch("/api/jlap/:id", requireRole("verifier"), (req, res) => {
   if (status === "rejected" && !note) {
     return fail(res, 400, "Reject requires a verifier note.");
   }
-  db.prepare(
-    `UPDATE jlap_submissions
-        SET status = ?, verifier_note = ?, verified_at = ?, verified_by = ?
-      WHERE id = ?`
-  ).run(
-    status,
-    note || (status === "verified" ? "JLAP verified" : ""),
-    Date.now(),
-    req.user.username,
-    id
-  );
+
+  // Transaction boundary: the JLAP row and the user's certified_judge flag
+  // flip as a single atomic unit so a crash between the two statements can
+  // never leave us with a "verified" JLAP against a user who still isn't a
+  // judge. The `judgeGranted` flag is read outside the transaction for
+  // audit/notify side effects.
+  let judgeGranted = false;
+  const tx = db.transaction(() => {
+    db.prepare(
+      `UPDATE jlap_submissions
+          SET status = ?, verifier_note = ?, verified_at = ?, verified_by = ?
+        WHERE id = ?`
+    ).run(
+      status,
+      note || (status === "verified" ? "JLAP verified" : ""),
+      Date.now(),
+      req.user.username,
+      id
+    );
+    if (status === "verified") {
+      const target = db
+        .prepare(`SELECT certified_judge FROM users WHERE username = ?`)
+        .get(existing.username);
+      if (target && !target.certified_judge) {
+        db.prepare(
+          `UPDATE users SET certified_judge = 1 WHERE username = ?`
+        ).run(existing.username);
+        judgeGranted = true;
+      }
+    }
+  });
+  tx();
+
   auditLog(
     req.user.username,
     "jlap." + status,
     id,
-    { member: existing.username },
+    { member: existing.username, judgeGranted },
     req.clientIp
   );
+  if (judgeGranted) {
+    auditLog(
+      req.user.username,
+      "jlap.judge.granted",
+      id,
+      { member: existing.username },
+      req.clientIp
+    );
+  }
   if (existing.status !== status) {
     if (status === "verified") {
       notify(
         existing.username,
         "jlap",
-        "JLAP approved",
-        "Your JLAP certificate was verified by " + req.user.username + ".",
+        judgeGranted ? "JLAP approved — Certified Judge granted" : "JLAP approved",
+        judgeGranted
+          ? "Your JLAP certificate was verified by " +
+              req.user.username +
+              ". The Certified Judge flag is now on your digital ID."
+          : "Your JLAP certificate was verified by " + req.user.username + ".",
         "dashboard.html"
       );
     } else if (status === "rejected") {
@@ -3582,9 +3785,9 @@ app.get("/api/id-flags/me", requireAuth, (req, res) => {
       professionalBlader: currentProGames.includes("Beyblade X"),
       proGames: currentProGames,
     },
-    pending: pending ? mapIdFlag(pending) : null,
-    latest: latest ? mapIdFlag(latest) : null,
-    history: rows.map(mapIdFlag),
+    pending: pending ? mapIdFlag(pending, { withEvidence: true }) : null,
+    latest: latest ? mapIdFlag(latest, { withEvidence: true }) : null,
+    history: rows.map((r) => mapIdFlag(r)),
   });
 });
 
@@ -3607,8 +3810,24 @@ app.post("/api/id-flags/request", requireAuth, (req, res) => {
   }
 
   const currentProGames = readProGames(req.user);
+  const hasJudge = !!req.user.certified_judge;
+
+  // v1.14.0: Certified Judge is granted only by JLAP approval. A user may
+  // still self-relinquish the flag through this endpoint (1 -> 0), but
+  // attempting to claim it here (0 -> 1) is rejected with a pointer at
+  // the JLAP upload form.
+  if (wantCj && !hasJudge) {
+    return fail(
+      res,
+      400,
+      "The Certified Judge flag is granted automatically when a Verifier " +
+        "approves your JLAP package. Upload your certificate + QR under " +
+        "Dashboard → JLAP certification instead."
+    );
+  }
+
   if (
-    wantCj === !!req.user.certified_judge &&
+    wantCj === hasJudge &&
     proGamesEqual(wantProGames, currentProGames)
   ) {
     return fail(res, 400, "No change from your current approved ID flags.");
@@ -3623,6 +3842,29 @@ app.post("/api/id-flags/request", requireAuth, (req, res) => {
     return fail(res, 409, "You already have a pending ID flags request.");
   }
 
+  // v1.14.0: every newly-claimed PRO game needs evidence. Existing claims
+  // can be re-submitted without fresh proof — this is a policy about
+  // *adding* a pill, not about keeping one. We sanitise the client list
+  // first so oversized payloads can't sneak through, then match each
+  // added game to an evidence entry.
+  const addedPro = wantProGames.filter((g) => !currentProGames.includes(g));
+  const evidenceIn = Array.isArray(b.evidence) ? b.evidence : [];
+  const evidenceClean = [];
+  const evidenceByGame = new Map();
+  for (const raw of evidenceIn) {
+    const e = sanitizeEvidenceEntry(raw);
+    if (!e) continue;
+    if (!wantProGames.includes(e.game)) continue; // ignore stale / wrong-game
+    if (!evidenceByGame.has(e.game)) {
+      evidenceByGame.set(e.game, e);
+      evidenceClean.push(e);
+    }
+  }
+  for (const game of addedPro) {
+    const reason = validateNewGameEvidence(game, evidenceByGame.get(game));
+    if (reason) return fail(res, 400, reason);
+  }
+
   const row = {
     id: uid("idf_"),
     username: req.user.username,
@@ -3635,14 +3877,38 @@ app.post("/api/id-flags/request", requireAuth, (req, res) => {
     verified_at: null,
     verified_by: null,
   };
-  db.prepare(
+
+  const insertRequest = db.prepare(
     `INSERT INTO id_flag_requests (
       id, username, certified_judge, professional_blader, pro_games_json, status,
       verifier_note, created_at, verified_at, verified_by
     ) VALUES (@id, @username, @certified_judge, @professional_blader, @pro_games_json, @status,
               @verifier_note, @created_at, @verified_at, @verified_by)`
-  ).run(row);
-  ok(res, { request: mapIdFlag(row) });
+  );
+  const insertEvidence = db.prepare(
+    `INSERT INTO id_flag_evidence (
+      id, request_id, game, league, photo_data_url, link_url, note, created_at
+    ) VALUES (@id, @request_id, @game, @league, @photo_data_url, @link_url, @note, @created_at)`
+  );
+  const now = Date.now();
+  const tx = db.transaction(() => {
+    insertRequest.run(row);
+    for (const e of evidenceClean) {
+      insertEvidence.run({
+        id: uid("idfe_"),
+        request_id: row.id,
+        game: e.game,
+        league: e.league,
+        photo_data_url: e.photoDataUrl,
+        link_url: e.linkUrl,
+        note: e.note,
+        created_at: now,
+      });
+    }
+  });
+  tx();
+
+  ok(res, { request: mapIdFlag(row, { withEvidence: true }) });
 });
 
 app.get("/api/id-flags/pending", requireRole("verifier"), (_req, res) => {
@@ -3655,7 +3921,33 @@ app.get("/api/id-flags/pending", requireRole("verifier"), (_req, res) => {
         ORDER BY f.created_at ASC`
     )
     .all();
-  ok(res, { requests: rows.map(mapIdFlag) });
+  // Evidence is returned in slim form (booleans + link URLs, no base64
+  // photos) so the queue stays compact even with dozens of pending
+  // requests. Verifiers load full photos on demand via GET /api/id-flags/:id.
+  ok(res, { requests: rows.map((r) => mapIdFlag(r, { withEvidence: true })) });
+});
+
+// Single-record fetch used by the verifier lightbox to get the full
+// base64 photo data URL per evidence entry. Access: owner always; admins
+// and verifiers for any request.
+app.get("/api/id-flags/:id", requireAuth, (req, res) => {
+  const id = String(req.params.id || "");
+  const row = db
+    .prepare(
+      `SELECT f.*, u.ign AS user_ign
+         FROM id_flag_requests f
+         LEFT JOIN users u ON u.username = f.username
+        WHERE f.id = ?`
+    )
+    .get(id);
+  if (!row) return fail(res, 404, "Not found.");
+  const role = req.user.role;
+  const canSee =
+    role === "admin" || role === "verifier" || row.username === req.user.username;
+  if (!canSee) return fail(res, 403, "Forbidden.");
+  ok(res, {
+    request: mapIdFlag(row, { withEvidence: true, withPhotos: true }),
+  });
 });
 
 app.patch("/api/id-flags/:id", requireRole("verifier"), (req, res) => {
@@ -3749,7 +4041,7 @@ app.patch("/api/id-flags/:id", requireRole("verifier"), (req, res) => {
   const updated = db
     .prepare(`SELECT * FROM id_flag_requests WHERE id = ?`)
     .get(id);
-  ok(res, { request: mapIdFlag(updated) });
+  ok(res, { request: mapIdFlag(updated, { withEvidence: true }) });
 });
 
 // --------------------------------------------------------------------------

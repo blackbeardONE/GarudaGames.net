@@ -5527,3 +5527,92 @@ body.admin-modal-open {
   background: rgba(202, 138, 4, 0.15);
   border-color: rgba(202, 138, 4, 0.45);
 }
+
+/* v1.20.0 — Staff 2FA rollout card on the admin dashboard. Tone mirrors
+   the dash-jlap-status convention so admins get the same visual cue for
+   "everything's fine", "clock is ticking", and "we're past the grace". */
+.admin-2fa-rollout__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+.admin-2fa-rollout__status {
+  display: inline-block;
+  padding: 0.15rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(148, 163, 184, 0.1);
+  color: #cbd5e1;
+}
+.admin-2fa-rollout--ok .admin-2fa-rollout__status {
+  border-color: rgba(34, 197, 94, 0.55);
+  background: rgba(34, 197, 94, 0.1);
+  color: #a7f3d0;
+}
+.admin-2fa-rollout--pending .admin-2fa-rollout__status {
+  border-color: rgba(56, 189, 248, 0.55);
+  background: rgba(56, 189, 248, 0.1);
+  color: #bae6fd;
+}
+.admin-2fa-rollout--warn .admin-2fa-rollout__status {
+  border-color: rgba(234, 179, 8, 0.55);
+  background: rgba(234, 179, 8, 0.12);
+  color: #fde68a;
+}
+.admin-2fa-rollout--bad .admin-2fa-rollout__status {
+  border-color: rgba(239, 68, 68, 0.6);
+  background: rgba(239, 68, 68, 0.12);
+  color: #fecaca;
+}
+.admin-2fa-rollout__stats {
+  margin: 0.65rem 0 1rem;
+}
+.admin-2fa-rollout__table td:last-child {
+  text-align: right;
+  white-space: nowrap;
+}
+.adm-2fa-nudge[disabled] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* v1.20.0 — Dashboard recovery-codes prominent warning. Only rendered
+   when the remaining count is at or below 3 AND the viewer is staff, so
+   the real lockout risk (staff who can be hard-gated if they lose their
+   authenticator) gets a banner above the fold instead of buried in the
+   TOTP panel. */
+.dash-recovery-alert {
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  border: 1px solid rgba(234, 179, 8, 0.55);
+  background: rgba(234, 179, 8, 0.12);
+}
+.dash-recovery-alert[hidden] {
+  display: none;
+}
+.dash-recovery-alert--bad {
+  border-color: rgba(239, 68, 68, 0.6);
+  background: rgba(239, 68, 68, 0.12);
+}
+.dash-recovery-alert__title {
+  display: block;
+  margin: 0 0 0.3rem;
+  font-weight: 700;
+}
+.dash-recovery-alert__body {
+  margin: 0;
+}
+.dash-recovery-alert__cta {
+  display: inline-block;
+  margin-top: 0.4rem;
+  font-weight: 600;
+  color: inherit;
+  text-decoration: underline;
+}

@@ -5012,6 +5012,208 @@ function safeJson(s) {
 }
 
 // --------------------------------------------------------------------------
+// v1.20.0 — Staff 2FA rollout tracker
+// --------------------------------------------------------------------------
+//
+// Admin gets one page-level view of who still needs TOTP before the grace
+// window closes, and a one-click "nudge" button that drops an inbox entry
+// (+ best-effort email) into the staffer's queue. Keeps admins out of the
+// DB for rollout visibility and keeps the record on the audit trail.
+
+const STAFF_2FA_NUDGE_KIND = "staff-2fa.nudge";
+const STAFF_2FA_NUDGE_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 1 day per target
+
+function staff2faNudgeBody(graceUntil) {
+  const whenMs = Number(graceUntil);
+  let when = "";
+  if (Number.isFinite(whenMs) && whenMs > 0) {
+    when =
+      " The grace window closes on " +
+      new Date(whenMs).toISOString().slice(0, 10) +
+      ".";
+  }
+  return (
+    "Your verifier/admin account still doesn't have two-factor " +
+    "authentication enabled. Head to Dashboard → Security and scan the " +
+    "QR with your authenticator app to finish setup." +
+    when +
+    " After the cutoff every staff action returns 403 until TOTP is on."
+  );
+}
+
+function staff2faNudgeSendEmail(username, logger = console) {
+  if (!mailer || typeof mailer.sendSecurityNotification !== "function") {
+    return Promise.resolve({ sent: false, reason: "mailer-unavailable" });
+  }
+  const row = db
+    .prepare("SELECT email, email_verified_at FROM users WHERE username = ?")
+    .get(String(username).toLowerCase());
+  if (!row || !row.email || !row.email_verified_at) {
+    return Promise.resolve({ sent: false, reason: "no-verified-email" });
+  }
+  return mailer
+    .sendSecurityNotification(
+      {
+        to: row.email,
+        username,
+        event: "staff-2fa.nudge",
+        detail: staff2faNudgeBody(currentStaff2faGrace()),
+        ip: "",
+        when: Date.now(),
+      },
+      { logger }
+    )
+    .catch(() => ({ sent: false }));
+}
+
+app.get(
+  "/api/admin/staff-2fa-status",
+  requireRole("admin"),
+  (_req, res) => {
+    const now = Date.now();
+    const grace = currentStaff2faGrace();
+    const staff = db
+      .prepare(
+        `SELECT username, role, totp_enabled, email, email_verified_at, created_at
+           FROM users
+          WHERE role IN ('verifier','admin')
+          ORDER BY role DESC, username ASC`
+      )
+      .all();
+    const lastSeenStmt = db.prepare(
+      `SELECT MAX(COALESCE(last_seen_at, created_at)) AS t
+         FROM sessions WHERE username = ?`
+    );
+    const lastDeniedStmt = db.prepare(
+      `SELECT MAX(created_at) AS t FROM audit_log
+        WHERE target = ? AND action = 'admin.2fa-denied'`
+    );
+    const lastGraceHitStmt = db.prepare(
+      `SELECT MAX(created_at) AS t FROM audit_log
+        WHERE target = ? AND action = 'admin.2fa-grace-hit'`
+    );
+    const lastNudgeStmt = db.prepare(
+      `SELECT MAX(created_at) AS t FROM notifications
+        WHERE username = ? AND kind = ?`
+    );
+    const lastNudgeAuditStmt = db.prepare(
+      `SELECT MAX(created_at) AS t FROM audit_log
+        WHERE target = ? AND action = 'admin.2fa-nudge'`
+    );
+
+    const members = staff.map((row) => {
+      const ls = lastSeenStmt.get(row.username);
+      const ld = lastDeniedStmt.get(row.username);
+      const lg = lastGraceHitStmt.get(row.username);
+      const ln = lastNudgeStmt.get(row.username, STAFF_2FA_NUDGE_KIND);
+      const la = lastNudgeAuditStmt.get(row.username);
+      return {
+        username: row.username,
+        role: row.role,
+        totpEnabled: !!row.totp_enabled,
+        emailVerified: !!row.email_verified_at,
+        hasEmail: !!row.email,
+        createdAt: row.created_at,
+        lastSeenAt: (ls && ls.t) || null,
+        lastDeniedAt: (ld && ld.t) || null,
+        lastGraceHitAt: (lg && lg.t) || null,
+        lastNudgeAt: Math.max(
+          (ln && ln.t) || 0,
+          (la && la.t) || 0
+        ) || null,
+      };
+    });
+
+    const withTotp = members.filter((m) => m.totpEnabled).length;
+    const withoutTotp = members.length - withTotp;
+    const daysLeft =
+      grace != null ? Math.max(0, Math.ceil((grace - now) / 86400000)) : null;
+
+    ok(res, {
+      staff: members,
+      aggregates: {
+        totalStaff: members.length,
+        withTotp,
+        withoutTotp,
+        graceUntil: grace,
+        graceActive: grace != null && grace > now,
+        daysLeft,
+        now,
+      },
+    });
+  }
+);
+
+app.post(
+  "/api/admin/staff-2fa-nudge",
+  requireRole("admin"),
+  async (req, res) => {
+    const body = req.body || {};
+    const targetRaw = String(body.target || "").trim().toLowerCase();
+    if (!targetRaw) return fail(res, 400, "target is required.");
+    const target = getUserByUsername(targetRaw);
+    if (!target) return fail(res, 404, "No such user.");
+    if (!isStaffRole(target.role)) {
+      return fail(res, 400, "Target is not a staff account.");
+    }
+    if (target.totp_enabled) {
+      return fail(res, 400, "Target already has 2FA enabled.");
+    }
+
+    const now = Date.now();
+    // Cooldown: admin can't spam a single staffer. The cooldown is
+    // enforced on both the notifications row and an audit-log echo so a
+    // caller can't bypass it by deleting their own inbox row.
+    const lastNudge = db
+      .prepare(
+        `SELECT MAX(created_at) AS t FROM notifications
+          WHERE username = ? AND kind = ?`
+      )
+      .get(target.username, STAFF_2FA_NUDGE_KIND);
+    const lastAudit = db
+      .prepare(
+        `SELECT MAX(created_at) AS t FROM audit_log
+          WHERE target = ? AND action = 'admin.2fa-nudge'`
+      )
+      .get(target.username);
+    const lastSent = Math.max(
+      (lastNudge && lastNudge.t) || 0,
+      (lastAudit && lastAudit.t) || 0
+    );
+    if (lastSent > 0 && now - lastSent < STAFF_2FA_NUDGE_COOLDOWN_MS) {
+      return fail(
+        res,
+        429,
+        "This staff member was already nudged in the last 24 hours."
+      );
+    }
+
+    notify(
+      target.username,
+      STAFF_2FA_NUDGE_KIND,
+      "Enable two-factor authentication",
+      staff2faNudgeBody(currentStaff2faGrace()),
+      "dashboard.html#tfa"
+    );
+    auditLog(
+      req.user.username,
+      "admin.2fa-nudge",
+      target.username,
+      { role: target.role, graceUntil: currentStaff2faGrace() },
+      req.clientIp
+    );
+
+    const mailRes = await staff2faNudgeSendEmail(target.username);
+    ok(res, {
+      target: target.username,
+      emailed: !!(mailRes && mailRes.sent),
+      reason: mailRes && mailRes.sent ? null : mailRes && mailRes.reason,
+      cooldownMs: STAFF_2FA_NUDGE_COOLDOWN_MS,
+    });
+  }
+);
+
+// --------------------------------------------------------------------------
 // News / "What's new" feed
 // --------------------------------------------------------------------------
 

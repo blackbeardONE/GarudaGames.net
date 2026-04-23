@@ -150,6 +150,7 @@
       if (window.GarudaStaff2faGate) {
         window.GarudaStaff2faGate.renderDashboardBanner(u, "staff-2fa-banner");
       }
+      renderRecoveryAlert(u);
       hydrateProfileForm();
       bindPhotoUpload();
       bindAchievementForm();
@@ -182,6 +183,60 @@
     return window.GarudaApi.listAchievements().then(function (r) {
       achievements = (r && r.achievements) || [];
     });
+  }
+
+  // renderRecoveryAlert paints a top-of-dashboard banner whenever a
+  // staff user (verifier / admin) has <= 3 recovery codes remaining.
+  // Regular users already see the same info inside the TOTP panel; for
+  // staff the lockout risk is materially higher once v1.19 enforcement
+  // is on, so we elevate the warning above the fold.
+  function renderRecoveryAlert(u) {
+    var host = el("dash-recovery-alert");
+    if (!host) return;
+    host.hidden = true;
+    if (!u) return;
+    var isStaff = u.role === "verifier" || u.role === "admin";
+    if (!isStaff) return;
+    if (!u.totpEnabled) return;
+    window.GarudaApi.twoFactor
+      .recoveryStatus()
+      .then(function (res) {
+        if (!res || !res.enabled) return;
+        var remaining = Number(res.remaining || 0);
+        var total = Number(res.total || 0);
+        if (remaining > 3) return;
+        host.classList.remove(
+          "dash-recovery-alert--bad"
+        );
+        if (remaining === 0) host.classList.add("dash-recovery-alert--bad");
+        var title =
+          remaining === 0
+            ? "0 recovery codes left"
+            : remaining + " of " + (total || 10) + " recovery codes left";
+        var body =
+          remaining === 0
+            ? "You have no recovery codes. If you lose your authenticator app you will be locked out of your " +
+              u.role +
+              " account — a fresh set takes 10 seconds to mint."
+            : "You only have " +
+              remaining +
+              " one-time recovery code" +
+              (remaining === 1 ? "" : "s") +
+              " left. Staff accounts are hard-gated at the end of the 2FA grace window, so please regenerate before you run out.";
+        host.innerHTML =
+          '<strong class="dash-recovery-alert__title">' +
+          title +
+          "</strong>" +
+          '<p class="dash-recovery-alert__body">' +
+          body +
+          " " +
+          '<a class="dash-recovery-alert__cta" href="#tfa-recovery-summary">Regenerate now\u2192</a>' +
+          "</p>";
+        host.hidden = false;
+      })
+      .catch(function () {
+        // silent — the in-panel summary still shows if this happens
+      });
   }
 
   function refreshJlap() {

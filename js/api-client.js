@@ -319,6 +319,12 @@
       }
       var qs = params.length ? "?" + params.join("&") : "";
       return apiRequest("GET", "/admin/audit" + qs);
+    },
+    adminStaff2faStatus: function () {
+      return apiRequest("GET", "/admin/staff-2fa-status");
+    },
+    adminStaff2faNudge: function (target) {
+      return apiRequest("POST", "/admin/staff-2fa-nudge", { target: target });
     }
   };
 })();

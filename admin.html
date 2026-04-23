@@ -78,6 +78,7 @@
           <nav class="dash-quick-actions" aria-label="Admin quick actions">
             <a class="btn btn--ghost btn--sm" href="verifier.html">Verifier queue</a>
             <a class="btn btn--ghost btn--sm" href="#adm-m">Members</a>
+            <a class="btn btn--ghost btn--sm" href="#adm-2fa">Staff 2FA</a>
             <a class="btn btn--ghost btn--sm" href="#adm-s">Site settings</a>
             <a class="btn btn--ghost btn--sm" href="news.html">News &amp; updates</a>
             <button type="button" class="btn btn--ghost btn--sm" id="admin-export-top">Export backup</button>
@@ -160,6 +161,67 @@
                 </table>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section
+          class="dash-card admin-2fa-rollout"
+          aria-labelledby="adm-2fa"
+          id="admin-2fa-rollout"
+        >
+          <div class="admin-2fa-rollout__header">
+            <h2 id="adm-2fa" class="dash-card__title">Staff 2FA rollout</h2>
+            <span
+              class="admin-2fa-rollout__status"
+              id="adm-2fa-status-pill"
+            >Loading…</span>
+          </div>
+          <p class="dash-card__hint" id="adm-2fa-hint">
+            Tracks which verifier and admin accounts still need TOTP before
+            the grace window closes. Use <strong>Nudge</strong> to drop an
+            inbox entry (and best-effort email) reminding them to finish
+            setup. One nudge per staffer per 24 hours.
+          </p>
+          <div class="stats-grid admin-2fa-rollout__stats">
+            <article class="stats-card">
+              <span class="stats-card__label">Total staff</span>
+              <strong class="stats-card__value" id="adm-2fa-total">—</strong>
+              <span class="stats-card__sub">Verifiers + admins</span>
+            </article>
+            <article class="stats-card">
+              <span class="stats-card__label">2FA enabled</span>
+              <strong class="stats-card__value" id="adm-2fa-enabled">—</strong>
+              <span class="stats-card__sub" id="adm-2fa-enabled-sub">&nbsp;</span>
+            </article>
+            <article class="stats-card">
+              <span class="stats-card__label">Still missing</span>
+              <strong class="stats-card__value" id="adm-2fa-missing">—</strong>
+              <span class="stats-card__sub" id="adm-2fa-missing-sub">&nbsp;</span>
+            </article>
+            <article class="stats-card">
+              <span class="stats-card__label">Grace ends</span>
+              <strong class="stats-card__value" id="adm-2fa-grace">—</strong>
+              <span class="stats-card__sub" id="adm-2fa-grace-sub">&nbsp;</span>
+            </article>
+          </div>
+          <div class="dash-table-wrap">
+            <table class="dash-table admin-2fa-rollout__table">
+              <thead>
+                <tr>
+                  <th>Username</th>
+                  <th>Role</th>
+                  <th>2FA</th>
+                  <th>Email</th>
+                  <th>Last seen</th>
+                  <th>Last 403</th>
+                  <th>Last nudge</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="adm-2fa-tbody">
+                <tr><td colspan="8" class="dash-table-empty">Loading…</td></tr>
+              </tbody>
+            </table>
           </div>
         </section>
 

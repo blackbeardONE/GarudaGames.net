@@ -37,6 +37,7 @@
       }
       renderOverview();
       renderMembers();
+      renderStaff2fa();
       loadSiteForm();
       bindAddMember();
       bindSaveSite();
@@ -1687,5 +1688,214 @@
       });
     }
     auditLoad(true);
+  }
+
+  // --------------------------------------------------------------------
+  // v1.20.0 — Staff 2FA rollout card
+  // --------------------------------------------------------------------
+  //
+  // Pulls /api/admin/staff-2fa-status, paints the tiles + the staff table,
+  // and wires up a one-click "Nudge" button per row. Nudges hit a 24h
+  // server-side cooldown, so the button just disables itself for the
+  // round trip and shows whatever the server returned.
+
+  function fmtHumanAgo(ts) {
+    if (!ts) return "—";
+    var now = Date.now();
+    var d = now - Number(ts);
+    if (!isFinite(d) || d < 0) return "—";
+    var sec = Math.floor(d / 1000);
+    if (sec < 60) return "just now";
+    var min = Math.floor(sec / 60);
+    if (min < 60) return min + " min ago";
+    var hr = Math.floor(min / 60);
+    if (hr < 24) return hr + "h ago";
+    var days = Math.floor(hr / 24);
+    if (days < 30) return days + "d ago";
+    return fmtDate(ts);
+  }
+
+  function toneForRollout(agg) {
+    if (!agg.totalStaff) return "neutral";
+    if (!agg.withoutTotp) return "ok";
+    if (!agg.graceActive) return "bad";
+    if (agg.daysLeft != null && agg.daysLeft <= 3) return "bad";
+    if (agg.daysLeft != null && agg.daysLeft <= 7) return "warn";
+    return "pending";
+  }
+
+  function renderStaff2fa() {
+    var tbody = el("adm-2fa-tbody");
+    if (!tbody) return;
+    var statusPill = el("adm-2fa-status-pill");
+    var total = el("adm-2fa-total");
+    var enabled = el("adm-2fa-enabled");
+    var enabledSub = el("adm-2fa-enabled-sub");
+    var missing = el("adm-2fa-missing");
+    var missingSub = el("adm-2fa-missing-sub");
+    var grace = el("adm-2fa-grace");
+    var graceSub = el("adm-2fa-grace-sub");
+    var card = el("admin-2fa-rollout");
+
+    tbody.innerHTML =
+      '<tr><td colspan="8" class="dash-table-empty">Loading…</td></tr>';
+
+    window.GarudaApi.adminStaff2faStatus()
+      .then(function (res) {
+        var staff = (res && res.staff) || [];
+        var agg = (res && res.aggregates) || {
+          totalStaff: 0,
+          withTotp: 0,
+          withoutTotp: 0,
+          graceUntil: null,
+          graceActive: false,
+          daysLeft: null,
+        };
+
+        total.textContent = String(agg.totalStaff);
+        enabled.textContent = String(agg.withTotp);
+        missing.textContent = String(agg.withoutTotp);
+        enabledSub.textContent = agg.totalStaff
+          ? Math.round((agg.withTotp / agg.totalStaff) * 100) + "% of staff"
+          : "";
+        missingSub.textContent = agg.withoutTotp
+          ? "Still need TOTP"
+          : "Everyone's on 2FA";
+        if (agg.graceUntil) {
+          grace.textContent = fmtDate(agg.graceUntil);
+          if (agg.graceActive) {
+            graceSub.textContent =
+              (agg.daysLeft != null ? agg.daysLeft + " days" : "") +
+              " until hard-gate";
+          } else {
+            graceSub.textContent = "Grace expired — 403 enforced";
+          }
+        } else {
+          grace.textContent = "—";
+          graceSub.textContent = "No grace window — enforced now";
+        }
+
+        if (card) {
+          card.classList.remove(
+            "admin-2fa-rollout--ok",
+            "admin-2fa-rollout--warn",
+            "admin-2fa-rollout--bad",
+            "admin-2fa-rollout--pending",
+            "admin-2fa-rollout--neutral"
+          );
+          card.classList.add("admin-2fa-rollout--" + toneForRollout(agg));
+        }
+        if (statusPill) {
+          if (!agg.totalStaff) {
+            statusPill.textContent = "No staff yet";
+          } else if (!agg.withoutTotp) {
+            statusPill.textContent = "All staff on 2FA";
+          } else if (!agg.graceActive) {
+            statusPill.textContent = "Enforcement active";
+          } else {
+            statusPill.textContent =
+              agg.withoutTotp +
+              " pending · " +
+              (agg.daysLeft != null ? agg.daysLeft + "d left" : "grace");
+          }
+        }
+
+        if (!staff.length) {
+          tbody.innerHTML =
+            '<tr><td colspan="8" class="dash-table-empty">No staff accounts yet.</td></tr>';
+          return;
+        }
+
+        var sorted = staff.slice().sort(function (a, b) {
+          if (a.totpEnabled !== b.totpEnabled) {
+            return a.totpEnabled ? 1 : -1;
+          }
+          return a.username.localeCompare(b.username);
+        });
+
+        tbody.innerHTML = "";
+        for (var i = 0; i < sorted.length; i++) {
+          var m = sorted[i];
+          var tr = document.createElement("tr");
+          tr.dataset.username = m.username;
+          var emailCell = m.emailVerified
+            ? '<span class="pill pill--ok">Verified</span>'
+            : m.hasEmail
+            ? '<span class="pill pill--warn">Unverified</span>'
+            : '<span class="pill pill--bad">Missing</span>';
+          var tfaCell = m.totpEnabled
+            ? '<span class="pill pill--ok">On</span>'
+            : '<span class="pill pill--bad">Off</span>';
+          var canNudge = !m.totpEnabled;
+          var nudgeBtn = canNudge
+            ? '<button type="button" class="btn btn--ghost btn--sm adm-2fa-nudge" data-user="' +
+              esc(m.username) +
+              '">Nudge</button>'
+            : '<span class="dash-table-empty" style="padding:0">—</span>';
+          tr.innerHTML =
+            "<td><strong>" +
+            esc(m.username) +
+            "</strong></td>" +
+            "<td>" +
+            esc(m.role) +
+            "</td>" +
+            "<td>" +
+            tfaCell +
+            "</td>" +
+            "<td>" +
+            emailCell +
+            "</td>" +
+            "<td>" +
+            esc(fmtHumanAgo(m.lastSeenAt)) +
+            "</td>" +
+            "<td>" +
+            esc(fmtHumanAgo(m.lastDeniedAt)) +
+            "</td>" +
+            "<td>" +
+            esc(fmtHumanAgo(m.lastNudgeAt)) +
+            "</td>" +
+            "<td>" +
+            nudgeBtn +
+            "</td>";
+          tbody.appendChild(tr);
+        }
+        bindNudgeButtons(tbody);
+      })
+      .catch(function (err) {
+        tbody.innerHTML =
+          '<tr><td colspan="8" class="dash-table-empty">' +
+          esc((err && err.message) || "Couldn\u2019t load 2FA rollout status.") +
+          "</td></tr>";
+      });
+  }
+
+  function bindNudgeButtons(tbody) {
+    var btns = tbody.querySelectorAll(".adm-2fa-nudge");
+    for (var i = 0; i < btns.length; i++) {
+      (function (btn) {
+        btn.addEventListener("click", function () {
+          var user = btn.dataset.user;
+          if (!user) return;
+          btn.disabled = true;
+          var prev = btn.textContent;
+          btn.textContent = "Sending…";
+          window.GarudaApi
+            .adminStaff2faNudge(user)
+            .then(function (res) {
+              btn.textContent = res && res.emailed
+                ? "Sent (inbox + email)"
+                : "Sent (inbox)";
+              setTimeout(function () {
+                renderStaff2fa();
+              }, 800);
+            })
+            .catch(function (err) {
+              btn.disabled = false;
+              btn.textContent = prev;
+              alert((err && err.message) || "Couldn\u2019t nudge that user.");
+            });
+        });
+      })(btns[i]);
+    }
   }
 })();

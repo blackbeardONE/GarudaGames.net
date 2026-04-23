@@ -73,6 +73,73 @@
   var jlap = [];
   var idFlagsState = null;
 
+  function hasVerifiedEmail() {
+    return !!(user && user.hasEmail && user.emailVerified);
+  }
+
+  // v1.15.0: Any action that grants a flag (JLAP -> Judge, new PRO pill)
+  // is gated on the user having a verified email. Gate state is reflected
+  // in two places on the Dashboard:
+  //   * #jlap-email-gate      — shown if the user has no verified email
+  //     regardless of what they've typed; disables the JLAP submit button
+  //     so the server 400 never actually fires for this case.
+  //   * #id-meta-email-gate   — shown when the user is about to ADD a
+  //     new PRO pill (selection \ verified) and has no verified email;
+  //     the submit button is disabled in that case too.
+  // refreshEmailGates() is cheap (a few DOM reads) and is called from
+  // every place that touches user state or PRO checkbox selection.
+  function refreshEmailGates() {
+    var verified = hasVerifiedEmail();
+
+    var jlapGate = el("jlap-email-gate");
+    if (jlapGate) jlapGate.hidden = verified;
+    var jlapForm = el("form-jlap");
+    if (jlapForm) {
+      var jlapBtn = jlapForm.querySelector('button[type="submit"]');
+      if (jlapBtn) {
+        if (!verified) {
+          jlapBtn.disabled = true;
+          jlapBtn.title = "Verify your email first.";
+        } else {
+          jlapBtn.disabled = false;
+          jlapBtn.removeAttribute("title");
+        }
+      }
+    }
+
+    var metaGate = el("id-meta-email-gate");
+    var metaBtn = el("id-meta-save");
+    if (metaGate) {
+      var verifiedPro =
+        (idFlagsState && idFlagsState.verified.proGames) ||
+        (idFlagsState && idFlagsState.verified.professionalBlader
+          ? ["Beyblade X"]
+          : []);
+      var selected = (typeof proCheckboxes === "function"
+        ? proCheckboxes()
+            .filter(function (c) { return c.checked; })
+            .map(function (c) { return c.dataset.proGame; })
+        : []);
+      var addingNew = selected.some(function (g) {
+        return verifiedPro.indexOf(g) === -1;
+      });
+      var gateOn = addingNew && !verified;
+      metaGate.hidden = !gateOn;
+      if (metaBtn && gateOn) {
+        metaBtn.disabled = true;
+        metaBtn.title = "Verify your email first.";
+      } else if (metaBtn) {
+        // Re-enable only if the normal control flow allowed it — don't
+        // override the "Awaiting verification" state set by
+        // refreshIdFlagControls() when a pending request is open.
+        if (metaBtn.textContent === "Submit for verification") {
+          metaBtn.disabled = false;
+          metaBtn.removeAttribute("title");
+        }
+      }
+    }
+  }
+
   window.GarudaAuth
     .requireSessionOrRedirect("dashboard.html")
     .then(function (u) {
@@ -365,6 +432,7 @@
   // hits the new v1.8.0 endpoint.
   function renderEmailStatus() {
     var box = el("profile-email-status");
+    refreshEmailGates();
     if (!box || !user) return;
     if (!user.hasEmail) {
       box.hidden = true;
@@ -1106,6 +1174,7 @@
         btn.textContent = "Submit for verification";
       }
     }
+    refreshEmailGates();
   }
 
   function bindIdMetaForm() {
@@ -1128,6 +1197,7 @@
           .filter(function (c) { return c.checked; })
           .map(function (c) { return c.dataset.proGame; });
         renderEvidencePanel(selected, verifiedPro);
+        refreshEmailGates();
       });
     });
 

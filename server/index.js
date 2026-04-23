@@ -3641,6 +3641,24 @@ app.post("/api/jlap", requireAuth, (req, res) => {
     return fail(res, 400, "Certificate and QR are both required.");
   }
 
+  // v1.15.0: require a verified email on file BEFORE accepting a JLAP
+  // submission. A verified JLAP auto-grants the Certified Judge pill,
+  // and any future "flag on hold" event (see server/reconcile-flags-v114.js)
+  // needs a reachable channel outside the app. Without an email the
+  // inbox notification is the only signal, which a user who rarely
+  // logs in can miss indefinitely. Gating at the submission step keeps
+  // the invariant simple: every Judge in the system has a mailable
+  // address on file from day one.
+  if (!(req.user.email && req.user.email_verified_at)) {
+    return fail(
+      res,
+      400,
+      "Add and verify an email on your Dashboard → Account card before " +
+        "submitting a JLAP package. We send the 'your flag is on hold' " +
+        "notification there if we ever need to revisit a Judge grant."
+    );
+  }
+
   const pending = db
     .prepare(
       `SELECT COUNT(*) AS c FROM jlap_submissions WHERE username = ? AND status = 'pending'`
@@ -3863,6 +3881,23 @@ app.post("/api/id-flags/request", requireAuth, (req, res) => {
   for (const game of addedPro) {
     const reason = validateNewGameEvidence(game, evidenceByGame.get(game));
     if (reason) return fail(res, 400, reason);
+  }
+
+  // v1.15.0: adding any new PRO pill requires a verified email, matching
+  // the JLAP submission guard. The check runs AFTER evidence validation
+  // so a user who fixes evidence problems doesn't need to re-discover
+  // that they also lack a verified email only at the very end — they
+  // see both errors in sequence. Downgrade-only requests (addedPro is
+  // empty) are left alone so a user who only wants to drop a pill isn't
+  // blocked on admin.
+  if (addedPro.length > 0 && !(req.user.email && req.user.email_verified_at)) {
+    return fail(
+      res,
+      400,
+      "Add and verify an email on your Dashboard → Account card before " +
+        "claiming a new Professional pill. We send the 'your flag is " +
+        "on hold' notification there if we ever need to revisit the grant."
+    );
   }
 
   const row = {

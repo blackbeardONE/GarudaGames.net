@@ -5068,6 +5068,23 @@ body.admin-modal-open {
   color: var(--muted);
 }
 
+.dash-email-gate {
+  margin: 0.35rem 0 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid rgba(234, 179, 8, 0.55);
+  background: rgba(234, 179, 8, 0.12);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: #b45309;
+  line-height: 1.4;
+}
+.dash-email-gate[hidden] {
+  display: none;
+}
+.dash-email-gate strong {
+  color: inherit;
+}
+
 .dash-pro-games__list,
 .admin-pro-games__list {
   display: grid;

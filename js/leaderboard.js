@@ -440,3 +440,103 @@
 
   loadLeaderboard();
 })();
+
+// v1.16.0: Verifier leaderboard. Kept as a separate IIFE so it can mount
+// or no-op independently of the main leaderboard — the section is only
+// on leaderboard.html but the same JS file may ship on other pages in
+// the future, and the two tables don't share filters/state.
+(function () {
+  if (!window.GarudaApi) return;
+  var tbody = document.getElementById("vlb-tbody");
+  if (!tbody) return;
+  var emptyNote = document.getElementById("vlb-empty");
+  var chipsHost = document.querySelector(".verifier-leaderboard__chips");
+  var chips = chipsHost ? chipsHost.querySelectorAll("[data-vlb-window]") : [];
+  var currentWindow = "90d";
+
+  function escapeHtml(s) {
+    var d = document.createElement("div");
+    d.textContent = s == null ? "" : String(s);
+    return d.innerHTML;
+  }
+
+  function roleBadge(role) {
+    var label = role === "admin" ? "Admin" : role === "verifier" ? "Verifier" : "Member";
+    var klass = role === "admin"
+      ? "verifier-leaderboard__role verifier-leaderboard__role--admin"
+      : role === "verifier"
+      ? "verifier-leaderboard__role verifier-leaderboard__role--verifier"
+      : "verifier-leaderboard__role";
+    return '<span class="' + klass + '">' + label + "</span>";
+  }
+
+  function humanAgo(ts) {
+    if (!ts) return "—";
+    var diff = Date.now() - Number(ts);
+    if (!(diff >= 0)) return "—";
+    var day = 24 * 60 * 60 * 1000;
+    if (diff < day) return "today";
+    if (diff < 2 * day) return "yesterday";
+    if (diff < 14 * day) return Math.floor(diff / day) + " days ago";
+    if (diff < 60 * day) return Math.floor(diff / (7 * day)) + " weeks ago";
+    return Math.floor(diff / (30 * day)) + " months ago";
+  }
+
+  function render(rows) {
+    if (!rows.length) {
+      tbody.innerHTML = "";
+      if (emptyNote) emptyNote.hidden = false;
+      return;
+    }
+    if (emptyNote) emptyNote.hidden = true;
+    var html = "";
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      html +=
+        "<tr>" +
+        '<td class="verifier-leaderboard__rank">' + r.rank + "</td>" +
+        '<td class="verifier-leaderboard__member">' +
+          '<span class="verifier-leaderboard__ign">' + escapeHtml(r.ign) + "</span>" +
+          '<span class="verifier-leaderboard__username">@' + escapeHtml(r.username) + "</span>" +
+        "</td>" +
+        "<td>" + roleBadge(r.role) + "</td>" +
+        '<td class="verifier-leaderboard__count">' + Number(r.verifiedCount || 0).toLocaleString() + "</td>" +
+        "<td>" + escapeHtml(humanAgo(r.lastVerifiedAt)) + "</td>" +
+        "</tr>";
+    }
+    tbody.innerHTML = html;
+  }
+
+  function load(win) {
+    currentWindow = win === "all" ? "all" : "90d";
+    window.GarudaApi
+      .verifierLeaderboard({ window: currentWindow })
+      .then(function (res) {
+        render(((res && res.leaderboard) || []));
+      })
+      .catch(function (err) {
+        console.error(err);
+        tbody.innerHTML = "";
+        if (emptyNote) {
+          emptyNote.textContent = "Could not load verifier leaderboard right now.";
+          emptyNote.hidden = false;
+        }
+      });
+  }
+
+  if (chips && chips.length) {
+    chips.forEach(function (chip) {
+      chip.addEventListener("click", function () {
+        chips.forEach(function (c) {
+          c.classList.remove("chip--active");
+          c.setAttribute("aria-selected", "false");
+        });
+        chip.classList.add("chip--active");
+        chip.setAttribute("aria-selected", "true");
+        load(chip.getAttribute("data-vlb-window") || "90d");
+      });
+    });
+  }
+
+  load("90d");
+})();

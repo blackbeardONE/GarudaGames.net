@@ -165,6 +165,63 @@
             an officiated tournament.
           </p>
         </section>
+
+        <section
+          class="verifier-leaderboard"
+          aria-labelledby="vlb-heading"
+        >
+          <header class="verifier-leaderboard__header">
+            <h2 id="vlb-heading" class="verifier-leaderboard__title">
+              Verifier leaderboard
+            </h2>
+            <p class="verifier-leaderboard__sub">
+              Thanks to the folks who review achievements, JLAPs and
+              ID flag requests. Counts include every
+              <strong>verified</strong> row stamped by that user.
+            </p>
+            <div
+              class="verifier-leaderboard__chips"
+              role="tablist"
+              aria-label="Verifier window"
+            >
+              <button
+                type="button"
+                class="chip chip--active"
+                data-vlb-window="90d"
+                role="tab"
+                aria-selected="true"
+              >
+                Last 90 days
+              </button>
+              <button
+                type="button"
+                class="chip"
+                data-vlb-window="all"
+                role="tab"
+                aria-selected="false"
+              >
+                All time
+              </button>
+            </div>
+          </header>
+          <div class="verifier-leaderboard__table-wrap">
+            <table class="verifier-leaderboard__table">
+              <thead>
+                <tr>
+                  <th scope="col">Rank</th>
+                  <th scope="col">Verifier</th>
+                  <th scope="col">Role</th>
+                  <th scope="col">Verified</th>
+                  <th scope="col">Last action</th>
+                </tr>
+              </thead>
+              <tbody id="vlb-tbody"></tbody>
+            </table>
+            <p id="vlb-empty" class="leaderboard-empty" hidden>
+              No verifier activity in this window.
+            </p>
+          </div>
+        </section>
       </div>
     </main>
 

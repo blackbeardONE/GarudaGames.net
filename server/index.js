@@ -3125,6 +3125,92 @@ app.get("/api/leaderboard", (req, res) => {
   });
 });
 
+// v1.16.0: verifier leaderboard. Public, read-only. Ranks the people
+// who *did* the verifying — achievements + JLAPs + ID-flag requests
+// stamped `verified` — across two windows (last 90 days and all
+// time). The window switch happens server-side so the browser only
+// receives the window it asked for.
+//
+// Shape of each row:
+//   { username, ign, role, verifiedCount, lastVerifiedAt }
+// Rows with verifiedCount === 0 are filtered out before we return.
+// Tied counts are surfaced in the order the SQL engine picks (by
+// most-recent activity, since we already ORDER BY lastVerifiedAt);
+// the client renders ties with shared rank so it reads correctly.
+app.get("/api/verifiers/leaderboard", (req, res) => {
+  const rawWindow = String((req.query && req.query.window) || "90d")
+    .trim()
+    .toLowerCase();
+  const WINDOW_90D = 90 * 24 * 60 * 60 * 1000;
+  const windowStart =
+    rawWindow === "all" ? 0 : Date.now() - WINDOW_90D;
+
+  // The three tables that record a "verified" event carry the verifier's
+  // username in `verified_by` and a timestamp in `verified_at`. A rejected
+  // row still has verified_by / verified_at populated, so the COUNT/UNION
+  // filters on status explicitly.
+  const rows = db
+    .prepare(
+      `WITH events AS (
+         SELECT verified_by AS who, verified_at AS at FROM achievements
+          WHERE status = 'verified' AND verified_by IS NOT NULL
+            AND COALESCE(verified_at, 0) >= @start
+         UNION ALL
+         SELECT verified_by, verified_at FROM jlap_submissions
+          WHERE status = 'verified' AND verified_by IS NOT NULL
+            AND COALESCE(verified_at, 0) >= @start
+         UNION ALL
+         SELECT verified_by, verified_at FROM id_flag_requests
+          WHERE status = 'verified' AND verified_by IS NOT NULL
+            AND COALESCE(verified_at, 0) >= @start
+       )
+       SELECT e.who                     AS username,
+              COUNT(*)                  AS verified_count,
+              MAX(COALESCE(e.at, 0))    AS last_verified_at,
+              u.ign                     AS ign,
+              u.role                    AS role,
+              u.photo_data_url          AS photo
+         FROM events e
+         JOIN users u ON u.username = e.who
+        GROUP BY e.who
+        ORDER BY verified_count DESC, last_verified_at DESC, u.ign COLLATE NOCASE
+        LIMIT 100`
+    )
+    .all({ start: windowStart });
+
+  const leaderboard = rows
+    .filter((r) => (r.verified_count || 0) > 0)
+    .map((r) => ({
+      username: r.username,
+      ign: r.ign || r.username,
+      role: r.role || "user",
+      photoDataUrl: r.photo || "",
+      verifiedCount: r.verified_count || 0,
+      lastVerifiedAt: r.last_verified_at || null,
+    }));
+
+  // Dense ranking: ties share a rank, the next distinct count jumps by
+  // the number of tied rows ahead. Matches the /api/leaderboard
+  // convention so the UI rendering stays symmetric.
+  let prev = null;
+  let rank = 0;
+  let shown = 0;
+  for (const row of leaderboard) {
+    shown += 1;
+    if (row.verifiedCount !== prev) {
+      rank = shown;
+      prev = row.verifiedCount;
+    }
+    row.rank = rank;
+  }
+
+  ok(res, {
+    leaderboard,
+    window: rawWindow === "all" ? "all" : "90d",
+    generatedAt: Date.now(),
+  });
+});
+
 function mapAchievement(r, opts) {
   const playerCount = r.player_count || 0;
   const poster = r.poster_data_url || "";

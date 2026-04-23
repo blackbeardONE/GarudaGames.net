@@ -168,6 +168,10 @@
       var qs = params.length ? "?" + params.join("&") : "";
       return apiRequest("GET", "/leaderboard" + qs);
     },
+    verifierLeaderboard: function (opts) {
+      var win = opts && opts.window === "all" ? "all" : "90d";
+      return apiRequest("GET", "/verifiers/leaderboard?window=" + encodeURIComponent(win));
+    },
 
     listMembers: function () {
       return apiRequest("GET", "/members");

@@ -344,7 +344,11 @@
             escapeHtml(it.nonScoringReason || "Does not count toward leaderboard.") +
             '">Non-scoring</span>'
           : "") +
-        (it.source === "challonge"
+        (it.placementVerified
+          ? ' <span class="pill--challonge pill--challonge-placement" title="Server matched this placement against the Challonge participant list' +
+            (it.verifiedIgn ? " (as " + escapeHtml(it.verifiedIgn) + ")" : "") +
+            '.">Challonge &#10003;</span>'
+          : it.source === "challonge"
           ? ' <span class="pill--challonge" title="Tournament data was auto-fetched from Challonge at submission time.">Challonge</span>'
           : "") +
         '</td><td><span class="portfolio-gametag ' +

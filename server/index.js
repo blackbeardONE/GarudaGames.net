@@ -3068,7 +3068,7 @@ app.get("/api/portfolio/:handle", lookupLimiter, (req, res) => {
     .prepare(
       `SELECT id, event_name, event_date, game, rank, rank_code, placement,
               player_count, rank_points, challonge_url, source,
-              verified_at, created_at
+              placement_verified, verified_ign, verified_at, created_at
          FROM achievements
         WHERE username = ? AND status = 'verified'
         ORDER BY
@@ -3109,6 +3109,8 @@ app.get("/api/portfolio/:handle", lookupLimiter, (req, res) => {
       rankPoints: r.rank_points,
       challongeUrl: r.challonge_url,
       source: r.source || "manual",
+      placementVerified: !!r.placement_verified,
+      verifiedIgn: r.verified_ign || "",
       verifiedAt: r.verified_at,
       createdAt: r.created_at,
       season: seasonLabel,
@@ -3771,6 +3773,12 @@ function mapAchievement(r, opts) {
     // ingest time and stamped the row. Drives the
     // "Verified from Challonge" pill on the portfolio / dashboard.
     source: r.source || "manual",
+    // v1.27.0: true when the server matched this member's IGN against
+    // the bracket's participant list AND Challonge's `final_rank`
+    // equalled the member's claimed placement. Upgrades the pill from
+    // "Challonge" to "Challonge-verified placement".
+    placementVerified: !!r.placement_verified,
+    verifiedIgn: r.verified_ign || "",
     hasPoster: !!(posterUrl || posterLegacy),
     status: r.status,
     verifierNote: r.verifier_note,
@@ -3967,22 +3975,58 @@ app.post(
     const parsed = challonge.parseUrl(url);
     if (parsed.error) return fail(res, 400, parsed.error);
 
+    // v1.27.0: when GARUDA_CHALLONGE_API_KEY is set, this resolver
+    // pulls the full participant list via the authenticated v1 API so
+    // we can offer the caller an auto-detected placement. When the
+    // env var is absent or the key is rejected, it degrades to the
+    // v1.26 public path — the response still carries tournament name
+    // + participant count, just no participants[] and no
+    // suggestedPlacement.
+    const apiKey = (process.env.GARUDA_CHALLONGE_API_KEY || "").trim();
     let result;
     try {
-      result = await challonge.resolve(parsed.canonical, { db });
+      result = await challonge.resolveWithPlacements(parsed.canonical, {
+        db,
+        apiKey,
+      });
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("challonge.resolve threw:", e.message);
+      console.error("challonge.resolveWithPlacements threw:", e.message);
       return fail(res, 502, "Could not reach Challonge right now.");
     }
     if (!result.ok) {
       const httpStatus = result.status === 404 ? 404 : 502;
       return fail(res, httpStatus, result.error);
     }
+
+    // Only echo back the *caller's* match, not the whole participant
+    // list. Leaking the full list would let any member enumerate
+    // every bracket the club has ever submitted — a small but
+    // real privacy leak. We return a single best-match entry keyed
+    // to the caller's own IGN.
+    let suggestedPlacement = null;
+    let matchedIgn = "";
+    if (Array.isArray(result.participants) && result.participants.length) {
+      const me = db
+        .prepare("SELECT ign FROM users WHERE username = ?")
+        .get(req.user.username);
+      const match = challonge.matchParticipant(
+        (me && me.ign) || "",
+        result.participants
+      );
+      if (match) {
+        suggestedPlacement = match.placement;
+        matchedIgn = match.matchedName;
+      }
+    }
+
     ok(res, {
       fromCache: !!result.fromCache,
       canonicalUrl: result.canonicalUrl,
       tournament: result.data,
+      placementVerificationAvailable: !!result.apiKeyConfigured,
+      suggestedPlacement,
+      matchedIgn,
     });
   }
 );
@@ -4074,10 +4118,66 @@ app.post("/api/achievements", requireAuth, (req, res) => {
   // is accepted as source='manual'. A user CAN'T fake the pill by
   // pasting a random URL; the cache acts as our "we looked at it"
   // receipt.
-  const source =
+  let source =
     challongeUrl && challonge.hasFreshCache(challongeUrl, { db })
       ? "challonge"
       : "manual";
+
+  // v1.27.0 — placement auto-verification. Only runs when source is
+  // already 'challonge' (i.e. we saw the tournament at preview time)
+  // AND the cache row has a participants list (i.e. the preview ran
+  // against the authenticated API endpoint with a valid key).
+  //
+  // Policy:
+  //   - unique name match + final_rank matches submitted placement
+  //     → placement_verified=1, verified_ign=<matched name>, source
+  //       stays 'challonge'.
+  //   - unique name match + final_rank MISMATCHES submitted placement
+  //     → downgrade to source='manual'. We accept the row (bracket
+  //       data can be wrong on occasion, e.g. DQ/no-show edge cases)
+  //       but refuse to claim the server confirmed it. Verifier will
+  //       see both the bracket URL and the user's claim and decide.
+  //   - unique name match, final_rank is null (tournament not marked
+  //     complete), or ambiguous / no match → source stays 'challonge'
+  //     but placement_verified stays 0. The URL is still confirmed;
+  //     just no placement claim was made.
+  let placementVerified = 0;
+  let verifiedIgn = "";
+  if (source === "challonge") {
+    const participants = challonge.cachedParticipants(challongeUrl, { db });
+    if (participants.length) {
+      const me = db
+        .prepare("SELECT ign FROM users WHERE username = ?")
+        .get(req.user.username);
+      const match = challonge.matchParticipant(
+        (me && me.ign) || "",
+        participants
+      );
+      if (match && match.placement != null) {
+        // Derive the effective placement the member is claiming.
+        // RANK_CODES: champ=1st, 2nd=2nd, 3rd=3rd, podium=Nth (N>=4),
+        // swiss_king=Swiss-format winner (bracket placement varies,
+        // can't be cross-checked against Challonge's `final_rank`, so
+        // we skip). 'podium' with N<4 is rejected earlier in the
+        // handler so we don't need to re-guard here.
+        let claimed = null;
+        if (rankCode === "champ") claimed = 1;
+        else if (rankCode === "2nd") claimed = 2;
+        else if (rankCode === "3rd") claimed = 3;
+        else if (rankCode === "podium" && placement >= 4) claimed = placement;
+
+        if (claimed != null) {
+          if (claimed === match.placement) {
+            placementVerified = 1;
+            verifiedIgn = match.matchedName;
+          } else {
+            // Mismatch — accept the submission but strip the pill.
+            source = "manual";
+          }
+        }
+      }
+    }
+  }
 
   const row = {
     id: uid("ach_"),
@@ -4094,6 +4194,8 @@ app.post("/api/achievements", requireAuth, (req, res) => {
     poster_sha256: posterSha256,
     game,
     source,
+    placement_verified: placementVerified,
+    verified_ign: verifiedIgn,
     status: "pending",
     verifier_note: "",
     created_at: Date.now(),
@@ -4103,11 +4205,13 @@ app.post("/api/achievements", requireAuth, (req, res) => {
   db.prepare(
     `INSERT INTO achievements (
       id, username, event_name, event_date, rank, rank_code, placement, player_count,
-      rank_points, challonge_url, poster_data_url, poster_sha256, game, source, status, verifier_note,
+      rank_points, challonge_url, poster_data_url, poster_sha256, game, source,
+      placement_verified, verified_ign, status, verifier_note,
       created_at, verified_at, verified_by
     ) VALUES (@id, @username, @event_name, @event_date, @rank, @rank_code, @placement,
               @player_count, @rank_points, @challonge_url, @poster_data_url, @poster_sha256,
-              @game, @source, @status, @verifier_note, @created_at, @verified_at, @verified_by)`
+              @game, @source, @placement_verified, @verified_ign, @status, @verifier_note,
+              @created_at, @verified_at, @verified_by)`
   ).run(row);
   notifyStaff(
     "queue.achievement",
@@ -6734,9 +6838,24 @@ app.post("/api/csp-report", express.json({
 // --------------------------------------------------------------------------
 
 app.use((err, _req, res, _next) => {
+  // v1.27.0 — body-parser errors carry their own `statusCode` (400 for
+  // malformed JSON, 413 for payload-too-large). Honour those instead
+  // of collapsing every middleware failure into a generic 500, which
+  // confused the v1.26 preview probe and would confuse a real client
+  // the same way. We still log the full error for debugging.
   // eslint-disable-next-line no-console
   console.error(err);
-  res.status(500).json({ ok: false, error: "Server error." });
+  const knownStatus =
+    err &&
+    typeof err.statusCode === "number" &&
+    err.statusCode >= 400 &&
+    err.statusCode < 500
+      ? err.statusCode
+      : 500;
+  const payload = { ok: false, error: "Server error." };
+  if (knownStatus === 400) payload.error = "Malformed request body.";
+  else if (knownStatus === 413) payload.error = "Payload too large.";
+  res.status(knownStatus).json(payload);
 });
 
 // Only start the listener when this file is invoked directly

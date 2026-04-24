@@ -5434,6 +5434,16 @@ body.admin-modal-open {
   border: 1px solid rgba(111, 185, 239, 0.35);
 }
 
+/* v1.27.0 — upgraded pill for rows where the server matched the
+   member's IGN against the bracket's participant list AND the
+   final_rank agreed with the claimed placement. Stronger colour, a
+   checkmark glyph; visually distinct from the URL-only v1.26 pill. */
+.pill--challonge-placement {
+  background: rgba(42, 160, 110, 0.2);
+  color: #6de0a6;
+  border-color: rgba(109, 224, 166, 0.4);
+}
+
 /* Verifier-side: compact evidence list under each pending ID flag request.
    Photos load on click (via GET /api/id-flags/:id) so the queue stays
    fast. */

@@ -1503,10 +1503,39 @@
               if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) dateInp.value = iso;
             }
             if (res && res.canonicalUrl) chalInp.value = res.canonicalUrl;
+            // v1.27.0 — apply the server-detected placement when
+            // available. We auto-fill the rank + placement but never
+            // override a value the member already typed; they've
+            // explicitly contradicted the bracket in that case (see
+            // server-side: the ingest path will downgrade source to
+            // 'manual' rather than reject).
+            var p = res && res.suggestedPlacement;
+            if (p != null && p >= 1) {
+              if (p === 1 && !rankSel.value) rankSel.value = "champ";
+              else if (p === 2 && !rankSel.value) rankSel.value = "2nd";
+              else if (p === 3 && !rankSel.value) rankSel.value = "3rd";
+              else if (p >= 4) {
+                if (!rankSel.value) rankSel.value = "podium";
+                if (rankSel.value === "podium" && !placeInp.value) {
+                  placeInp.value = String(p);
+                }
+              }
+              sync();
+            }
             var parts = [];
             parts.push("Loaded: " + (t.tournamentName || "(unnamed)"));
             if (t.participantsCount)
               parts.push(t.participantsCount + " players");
+            if (res && res.matchedIgn && p != null) {
+              parts.push(
+                "matched you as \u201c" +
+                  res.matchedIgn +
+                  "\u201d \u2014 placed " +
+                  p
+              );
+            } else if (res && res.placementVerificationAvailable) {
+              parts.push("could not match your IGN on the bracket");
+            }
             if (t.state && t.state !== "complete")
               parts.push("note: tournament state is " + t.state);
             if (chalStatus) chalStatus.textContent = parts.join(" · ");
@@ -1769,8 +1798,12 @@
         if (r.countsTowardRanking === false && r.status === "verified") {
           detail += " · (does not count toward leaderboard)";
         }
-        if (r.source === "challonge") {
-          detail += " · Challonge-verified";
+        if (r.placementVerified) {
+          detail +=
+            " · Challonge-verified placement" +
+            (r.verifiedIgn ? " (as " + r.verifiedIgn + ")" : "");
+        } else if (r.source === "challonge") {
+          detail += " · Challonge-verified bracket";
         }
         rows.push({
           id: r.id,

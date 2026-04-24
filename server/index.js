@@ -13,6 +13,7 @@ const { db } = require("./db");
 const totp = require("./totp");
 const mailer = require("./mailer");
 const blobStore = require("./blob-store");
+const challonge = require("./challonge");
 
 // RFC-5322-ish email validator. Deliberately narrower than the RFC because
 // real-world delivery is what matters, not theoretical validity. Max 254
@@ -1583,6 +1584,26 @@ const exportLimiter = SKIP_RATE_LIMIT
 // walk every UUID in the table will hit this quickly. 30 per hour
 // per IP is still comfortably more than anyone should ever need
 // and catches automation long before it does meaningful damage.
+// v1.26.0: outbound Challonge fetches happen on a dedicated cap so a
+// user spamming the preview button can't push us past Challonge's
+// anonymous rate limit. 30 previews / 10 min / IP is well above what
+// any human posting real tournaments would need; combined with the
+// 24-hour cache it means repeated pastes of the same URL never leave
+// our box.
+const challongePreviewLimiter = SKIP_RATE_LIMIT
+  ? passthrough
+  : rateLimit({
+      windowMs: 10 * 60 * 1000,
+      limit: 30,
+      standardHeaders: "draft-7",
+      legacyHeaders: false,
+      message: {
+        ok: false,
+        error:
+          "Too many Challonge previews — slow down, or fill the form in manually.",
+      },
+    });
+
 const sessionRevokeLimiter = SKIP_RATE_LIMIT
   ? passthrough
   : rateLimit({
@@ -3046,7 +3067,8 @@ app.get("/api/portfolio/:handle", lookupLimiter, (req, res) => {
   const ach = db
     .prepare(
       `SELECT id, event_name, event_date, game, rank, rank_code, placement,
-              player_count, rank_points, challonge_url, verified_at, created_at
+              player_count, rank_points, challonge_url, source,
+              verified_at, created_at
          FROM achievements
         WHERE username = ? AND status = 'verified'
         ORDER BY
@@ -3086,6 +3108,7 @@ app.get("/api/portfolio/:handle", lookupLimiter, (req, res) => {
       nonScoringReason: nonScoring,
       rankPoints: r.rank_points,
       challongeUrl: r.challonge_url,
+      source: r.source || "manual",
       verifiedAt: r.verified_at,
       createdAt: r.created_at,
       season: seasonLabel,
@@ -3743,6 +3766,11 @@ function mapAchievement(r, opts) {
     nonScoringReason: nonScoring,
     rankPoints: r.rank_points,
     challongeUrl: r.challonge_url,
+    // v1.26.0: 'manual' (default, every pre-v1.26 row) or 'challonge'
+    // — the latter means the server saw a live Challonge snapshot at
+    // ingest time and stamped the row. Drives the
+    // "Verified from Challonge" pill on the portfolio / dashboard.
+    source: r.source || "manual",
     hasPoster: !!(posterUrl || posterLegacy),
     status: r.status,
     verifierNote: r.verifier_note,
@@ -3922,6 +3950,43 @@ app.get("/api/achievements/:id", requireAuth, (req, res) => {
   ok(res, { achievement: mapAchievement(row) });
 });
 
+// v1.26.0 — Challonge bracket auto-fetch preview. Members paste the
+// tournament URL from their dashboard form; we resolve it against
+// Challonge's unauthenticated `<slug>.json` endpoint and echo back
+// the normalized fields (name, participant count, completed_at,
+// state) so the client can pre-fill the submission form. Cached for
+// 24 h in `challonge_cache` so a popular tournament URL never hits
+// Challonge more than once a day from our box.
+app.post(
+  "/api/achievements/challonge/preview",
+  requireAuth,
+  challongePreviewLimiter,
+  async (req, res) => {
+    const url = String((req.body && req.body.url) || "").trim();
+    if (!url) return fail(res, 400, "Provide a Challonge URL.");
+    const parsed = challonge.parseUrl(url);
+    if (parsed.error) return fail(res, 400, parsed.error);
+
+    let result;
+    try {
+      result = await challonge.resolve(parsed.canonical, { db });
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("challonge.resolve threw:", e.message);
+      return fail(res, 502, "Could not reach Challonge right now.");
+    }
+    if (!result.ok) {
+      const httpStatus = result.status === 404 ? 404 : 502;
+      return fail(res, httpStatus, result.error);
+    }
+    ok(res, {
+      fromCache: !!result.fromCache,
+      canonicalUrl: result.canonicalUrl,
+      tournament: result.data,
+    });
+  }
+);
+
 app.post("/api/achievements", requireAuth, (req, res) => {
   const b = req.body || {};
   const eventName = String(b.eventName || "").trim();
@@ -4000,6 +4065,20 @@ app.post("/api/achievements", requireAuth, (req, res) => {
   const posterSha256 = posterBlob ? posterBlob.sha256 : "";
   const posterDataUrlStored = posterBlob ? "" : posterDataUrl;
 
+  // v1.26.0 — stamp source='challonge' only if:
+  //   1. the URL is a syntactically valid Challonge link, AND
+  //   2. the preview endpoint has a fresh (<24h) cache row for it.
+  // Clause 2 means the client had to actually call the preview before
+  // submitting, which means we saw the tournament exist at fetch
+  // time. A user can still paste a URL and skip the preview — the row
+  // is accepted as source='manual'. A user CAN'T fake the pill by
+  // pasting a random URL; the cache acts as our "we looked at it"
+  // receipt.
+  const source =
+    challongeUrl && challonge.hasFreshCache(challongeUrl, { db })
+      ? "challonge"
+      : "manual";
+
   const row = {
     id: uid("ach_"),
     username: req.user.username,
@@ -4014,6 +4093,7 @@ app.post("/api/achievements", requireAuth, (req, res) => {
     poster_data_url: posterDataUrlStored,
     poster_sha256: posterSha256,
     game,
+    source,
     status: "pending",
     verifier_note: "",
     created_at: Date.now(),
@@ -4023,11 +4103,11 @@ app.post("/api/achievements", requireAuth, (req, res) => {
   db.prepare(
     `INSERT INTO achievements (
       id, username, event_name, event_date, rank, rank_code, placement, player_count,
-      rank_points, challonge_url, poster_data_url, poster_sha256, game, status, verifier_note,
+      rank_points, challonge_url, poster_data_url, poster_sha256, game, source, status, verifier_note,
       created_at, verified_at, verified_by
     ) VALUES (@id, @username, @event_name, @event_date, @rank, @rank_code, @placement,
               @player_count, @rank_points, @challonge_url, @poster_data_url, @poster_sha256,
-              @game, @status, @verifier_note, @created_at, @verified_at, @verified_by)`
+              @game, @source, @status, @verifier_note, @created_at, @verified_at, @verified_by)`
   ).run(row);
   notifyStaff(
     "queue.achievement",

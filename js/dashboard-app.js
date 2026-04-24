@@ -1465,6 +1465,64 @@
     playersInp.addEventListener("input", updatePreview);
     sync();
 
+    // v1.26.0 — Challonge auto-fetch. The server hits Challonge's
+    // public <slug>.json endpoint (cached 24 h) and returns tournament
+    // name, participant count, and state. We autofill the event name
+    // only when the field is empty (so a user who already typed a
+    // better name keeps it), always overwrite the player count (that's
+    // the number Challonge is authoritative on, and the anti-fraud
+    // payoff of this feature), and warn if the tournament is not
+    // marked `complete` so the user knows the ranking may change.
+    var chalBtn = el("ach-challonge-fetch");
+    var chalStatus = el("ach-challonge-status");
+    var chalInp = el("ach-challonge");
+    if (chalBtn && chalInp) {
+      chalBtn.addEventListener("click", function () {
+        var url = chalInp.value.trim();
+        if (!url) {
+          if (chalStatus)
+            chalStatus.textContent = "Paste the bracket URL first.";
+          return;
+        }
+        if (chalStatus) chalStatus.textContent = "Looking up on Challonge…";
+        chalBtn.disabled = true;
+        window.GarudaApi
+          .previewChallonge(url)
+          .then(function (res) {
+            var t = (res && res.tournament) || {};
+            var nameField = el("ach-event");
+            if (nameField && !nameField.value.trim() && t.tournamentName) {
+              nameField.value = t.tournamentName;
+            }
+            if (t.participantsCount > 0) {
+              playersInp.value = String(t.participantsCount);
+              updatePreview();
+            }
+            if (dateInp && !dateInp.value && t.completedAtIso) {
+              var iso = String(t.completedAtIso).slice(0, 10);
+              if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) dateInp.value = iso;
+            }
+            if (res && res.canonicalUrl) chalInp.value = res.canonicalUrl;
+            var parts = [];
+            parts.push("Loaded: " + (t.tournamentName || "(unnamed)"));
+            if (t.participantsCount)
+              parts.push(t.participantsCount + " players");
+            if (t.state && t.state !== "complete")
+              parts.push("note: tournament state is " + t.state);
+            if (chalStatus) chalStatus.textContent = parts.join(" · ");
+          })
+          .catch(function (err) {
+            if (chalStatus)
+              chalStatus.textContent =
+                (err && err.message) ||
+                "Could not load this tournament — fill the form in manually.";
+          })
+          .then(function () {
+            chalBtn.disabled = false;
+          });
+      });
+    }
+
     form.addEventListener("submit", function (e) {
       e.preventDefault();
       var eventName = el("ach-event").value.trim();
@@ -1710,6 +1768,9 @@
         // blader doesn't think a point-free approval is a bug.
         if (r.countsTowardRanking === false && r.status === "verified") {
           detail += " · (does not count toward leaderboard)";
+        }
+        if (r.source === "challonge") {
+          detail += " · Challonge-verified";
         }
         rows.push({
           id: r.id,

@@ -344,6 +344,9 @@
             escapeHtml(it.nonScoringReason || "Does not count toward leaderboard.") +
             '">Non-scoring</span>'
           : "") +
+        (it.source === "challonge"
+          ? ' <span class="pill--challonge" title="Tournament data was auto-fetched from Challonge at submission time.">Challonge</span>'
+          : "") +
         '</td><td><span class="portfolio-gametag ' +
         gameClass(it.game) +
         '">' +

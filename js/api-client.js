@@ -201,6 +201,19 @@
     addAchievement: function (row) {
       return apiRequest("POST", "/achievements", row);
     },
+    // v1.26.0 — Challonge bracket auto-fetch. Paste the URL, get back
+    //   { tournament: { tournamentName, participantsCount,
+    //                    completedAtIso, state },
+    //     canonicalUrl, fromCache }
+    // The server caches Challonge responses for 24 h; most pastes are
+    // cache hits. If Challonge is unreachable the server returns 502
+    // and the dashboard falls back to manual entry — never blocking
+    // the submit button.
+    previewChallonge: function (url) {
+      return apiRequest("POST", "/achievements/challonge/preview", {
+        url: url,
+      });
+    },
     reviewAchievement: function (id, patch) {
       return apiRequest("PATCH", "/achievements/" + encodeURIComponent(id), patch);
     },

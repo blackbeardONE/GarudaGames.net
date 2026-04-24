@@ -5400,6 +5400,40 @@ body.admin-modal-open {
   margin-bottom: 0.6rem;
 }
 
+/* v1.26.0 — Challonge auto-fetch row: a ghost button tucked under the
+   challonge-url input and a muted status line for feedback. */
+.dash-challonge-fetch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: -0.2rem 0 0.6rem;
+}
+
+.dash-challonge-status {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted, #9aa);
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+/* v1.26.0 — Pill on portfolio / submissions list marking rows whose
+   Challonge bracket the server fetched at ingest time. Visual twin of
+   the GT-multiplier pill but in Challonge's blue. */
+.pill--challonge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: rgba(37, 125, 191, 0.18);
+  color: #6fb9ef;
+  border: 1px solid rgba(111, 185, 239, 0.35);
+}
+
 /* Verifier-side: compact evidence list under each pending ID flag request.
    Photos load on click (via GET /api/id-flags/:id) so the queue stays
    fast. */

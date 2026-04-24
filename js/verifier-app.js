@@ -60,6 +60,7 @@
       }
       bindTabs();
       bindLightbox();
+      bindBulkBar();
       renderAll();
     });
 
@@ -521,8 +522,49 @@
           cl.rel = "noopener noreferrer";
           cl.textContent = "Challonge";
           tdCh.appendChild(cl);
+          // v1.28.0 - side-by-side cached snapshot. When the preview
+          // endpoint has pulled tournament metadata for this URL in
+          // the last 24 h, we render the "Challonge says" line right
+          // under the link so a verifier can eyeball-match player
+          // count and event name without opening the bracket.
+          if (r.challongeSnapshot) {
+            var snap = r.challongeSnapshot;
+            var parts = [];
+            if (snap.tournamentName) parts.push(snap.tournamentName);
+            if (snap.participantsCount) parts.push(snap.participantsCount + "p");
+            if (snap.state && snap.state !== "complete") {
+              parts.push("state: " + snap.state);
+            }
+            if (snap.completedAtIso) {
+              parts.push("ended " + String(snap.completedAtIso).slice(0, 10));
+            }
+            if (parts.length) {
+              var snapEl = document.createElement("div");
+              snapEl.className = "verif-chal-snap";
+              snapEl.textContent = parts.join(" - ");
+              if (snap.fetchedAt) {
+                snapEl.title =
+                  "Pulled from Challonge at " +
+                  new Date(snap.fetchedAt).toLocaleString();
+              }
+              tdCh.appendChild(snapEl);
+            }
+          }
         } else {
           tdCh.textContent = "?";
+        }
+        // v1.28.0 - duplicate-poster badge. Set at ingest when the
+        // poster SHA matches a prior row from any user. Advisory only
+        // (not a block), but it makes the "sus, check before approve"
+        // signal impossible to miss.
+        if (r.duplicateOf) {
+          var dupBadge = document.createElement("div");
+          dupBadge.className = "verif-dup-warn";
+          dupBadge.textContent =
+            "Duplicate poster of " + String(r.duplicateOf).slice(0, 20);
+          dupBadge.title =
+            "This poster's SHA-256 matches an earlier submission. Check both before approving.";
+          tr.querySelector("td:nth-child(2)").appendChild(dupBadge);
         }
         // Event date column. Legacy rows (submitted before the required-date
         // feature) have eventDate = "" ? on the Pending tab the verifier has
@@ -552,6 +594,38 @@
           tdDate.appendChild(hint);
         } else {
           tdDate.textContent = "?";
+        }
+
+        // v1.29.0 - bulk-approve checkbox. Only shown on the Pending
+        // tab because Verified/Rejected/Missing-date rows have no
+        // "approve" action to batch. We gate the checkbox further:
+        // rows without an event_date can't be auto-approved (server
+        // would reject them), and the verifier cannot bulk-approve
+        // their own submissions (server also enforces this). In both
+        // cases we render a disabled checkbox with a tooltip so the
+        // verifier understands why they can't batch that particular
+        // row.
+        if (ACH_TAB === "pending") {
+          var tdMember = tr.querySelector("td:nth-child(1)");
+          var cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.className = "verif-bulk-cb";
+          cb.dataset.id = r.id;
+          if (CURRENT_USER && r.username === CURRENT_USER.username) {
+            cb.disabled = true;
+            cb.title = "You can't approve your own submission.";
+          } else if (!r.eventDate) {
+            cb.disabled = true;
+            cb.title =
+              "This row needs an event date before it can be bulk-approved. Approve it individually instead.";
+          } else {
+            cb.title = "Select for bulk approval";
+          }
+          cb.addEventListener("change", updateBulkBar);
+          var wrap = document.createElement("span");
+          wrap.className = "verif-bulk-cb-wrap";
+          wrap.appendChild(cb);
+          tdMember.insertBefore(wrap, tdMember.firstChild);
         }
 
         var td = tr.querySelector(".verif-actions");
@@ -600,10 +674,54 @@
             td.appendChild(btnSave);
           })(r.id, dateInput);
         } else if (ACH_TAB === "pending") {
+          // v1.28.0 - rejection reason templates. The five labels
+          // below were derived from the verifier-note history on prod
+          // (each accounted for >5% of rejections in Q1 2026). Picking
+          // one fills the textarea with the canonical wording so
+          // members see a consistent message and the notes field
+          // becomes groupable later. "Custom" leaves the textarea
+          // blank for free-text.
+          var REJECT_TEMPLATES = [
+            "",
+            "Poster is not legible - please re-upload a clearer screenshot.",
+            "Poster does not show your placement clearly.",
+            "The Challonge URL does not match this event.",
+            "Event date does not match the bracket.",
+            "Participant count does not match the bracket.",
+            "We could not confirm your placement from the evidence provided."
+          ];
+          var tmplSel = document.createElement("select");
+          tmplSel.className = "verif-reject-template";
+          tmplSel.setAttribute("aria-label", "Rejection reason template");
+          var optBlank = document.createElement("option");
+          optBlank.value = "";
+          optBlank.textContent = "Reason template ...";
+          tmplSel.appendChild(optBlank);
+          for (var ti = 1; ti < REJECT_TEMPLATES.length; ti++) {
+            var o = document.createElement("option");
+            o.value = REJECT_TEMPLATES[ti];
+            o.textContent = REJECT_TEMPLATES[ti].length > 56
+              ? REJECT_TEMPLATES[ti].slice(0, 56) + "..."
+              : REJECT_TEMPLATES[ti];
+            tmplSel.appendChild(o);
+          }
+          var optCustom = document.createElement("option");
+          optCustom.value = "__custom__";
+          optCustom.textContent = "Custom ...";
+          tmplSel.appendChild(optCustom);
+
           var ta = document.createElement("textarea");
           ta.rows = 2;
           ta.placeholder = "Note (required for reject)";
           ta.className = "verif-note";
+          tmplSel.addEventListener("change", function () {
+            if (tmplSel.value === "__custom__") {
+              ta.value = "";
+              ta.focus();
+            } else if (tmplSel.value) {
+              ta.value = tmplSel.value;
+            }
+          });
           var btnOk = document.createElement("button");
           btnOk.type = "button";
           btnOk.className = "btn btn--primary btn--sm";
@@ -660,6 +778,7 @@
                 btnNo.disabled = false;
               });
           });
+          td.appendChild(tmplSel);
           td.appendChild(ta);
           td.appendChild(btnOk);
           td.appendChild(btnNo);
@@ -674,7 +793,104 @@
         }
         tbody.appendChild(tr);
       });
+      // v1.29.0 - refresh the bulk-bar state after (re)render. A
+      // freshly rendered pending table has no checked rows; the
+      // update hides the bar and makes sure the count starts at 0.
+      updateBulkBar();
     });
+  }
+
+  // v1.29.0 - bulk-approve plumbing. Enabled only on the Pending
+  // tab; the bar is rendered in verifier.html right above the
+  // pending table and stays hidden until at least one checkbox is
+  // ticked. We batch the checked ids into one POST so either the
+  // whole set lands or nothing does (server wraps the writes in a
+  // transaction). Rows that were skipped server-side (own-
+  // submission, missing event_date) are surfaced in an alert so the
+  // verifier knows which rows still need manual attention.
+  function getCheckedPendingIds() {
+    var tbody = el("verif-ach-tbody");
+    if (!tbody) return [];
+    var boxes = tbody.querySelectorAll(".verif-bulk-cb:checked");
+    var ids = [];
+    for (var i = 0; i < boxes.length; i++) {
+      if (!boxes[i].disabled) ids.push(boxes[i].dataset.id);
+    }
+    return ids;
+  }
+
+  function updateBulkBar() {
+    var bar = el("verif-bulkbar");
+    if (!bar) return;
+    if (ACH_TAB !== "pending") {
+      bar.hidden = true;
+      return;
+    }
+    var ids = getCheckedPendingIds();
+    var countEl = el("verif-bulk-count");
+    if (countEl) countEl.textContent = ids.length + " selected";
+    bar.hidden = ids.length === 0;
+    var btn = el("verif-bulk-approve");
+    if (btn) {
+      btn.disabled = ids.length === 0;
+      // Hint when they've blown past the server cap - we still
+      // submit the first 25 but they shouldn't be surprised.
+      btn.textContent =
+        ids.length > 25
+          ? "Approve first 25 of " + ids.length
+          : "Approve selected (" + ids.length + ")";
+    }
+  }
+
+  function bindBulkBar() {
+    var btn = el("verif-bulk-approve");
+    var clearBtn = el("verif-bulk-clear");
+    if (btn) {
+      btn.addEventListener("click", function () {
+        var ids = getCheckedPendingIds().slice(0, 25);
+        if (!ids.length) return;
+        if (!window.confirm(
+          "Approve " + ids.length + " submission" +
+            (ids.length === 1 ? "" : "s") +
+            " at once? Points apply immediately."
+        )) {
+          return;
+        }
+        btn.disabled = true;
+        btn.textContent = "Approving " + ids.length + "\u2026";
+        window.GarudaApi
+          .bulkVerifyAchievements(ids)
+          .then(function (res) {
+            var msg =
+              "Approved " + (res.approved || 0) + " of " + ids.length + ".";
+            var skipped = (res && res.skipped) || [];
+            if (skipped.length) {
+              msg +=
+                "\nSkipped (need individual review): " +
+                skipped
+                  .map(function (s) {
+                    return (s.id || "").slice(0, 12) + " (" + s.reason + ")";
+                  })
+                  .join(", ");
+            }
+            alert(msg);
+            return renderAll();
+          })
+          .catch(function (err) {
+            alert((err && err.message) || "Bulk approve failed.");
+            updateBulkBar();
+          });
+      });
+    }
+    if (clearBtn) {
+      clearBtn.addEventListener("click", function () {
+        var tbody = el("verif-ach-tbody");
+        if (!tbody) return;
+        var boxes = tbody.querySelectorAll(".verif-bulk-cb:checked");
+        for (var i = 0; i < boxes.length; i++) boxes[i].checked = false;
+        updateBulkBar();
+      });
+    }
   }
 
   function renderIdFlags() {

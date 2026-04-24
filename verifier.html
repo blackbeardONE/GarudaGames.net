@@ -171,6 +171,21 @@
               Missing dates <span id="verif-missing-date-count" class="chip__count" hidden>0</span>
             </button>
           </div>
+          <div class="verif-bulkbar" id="verif-bulkbar" hidden>
+            <span class="verif-bulkbar__label" id="verif-bulk-count">0 selected</span>
+            <button
+              type="button"
+              class="btn btn--primary btn--sm"
+              id="verif-bulk-approve"
+              title="Approve every checked row in one click. Capped at 25 per batch."
+            >Approve selected</button>
+            <button
+              type="button"
+              class="btn btn--ghost btn--sm"
+              id="verif-bulk-clear"
+            >Clear</button>
+            <span class="verif-bulkbar__hint">Tick the boxes next to rows you've fully reviewed. Cap: 25 per click.</span>
+          </div>
           <div class="dash-table-wrap">
             <table class="dash-table">
               <thead>

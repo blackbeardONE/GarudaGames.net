@@ -225,6 +225,30 @@
     reviewAchievement: function (id, patch) {
       return apiRequest("PATCH", "/achievements/" + encodeURIComponent(id), patch);
     },
+    // v1.29.0 - Submit-time duplicate-poster check. Caller computes
+    // SHA-256 of the poster bytes client-side (Web Crypto) BEFORE
+    // posting the submission and pings this with the hex digest.
+    // Server returns { duplicate, sameUser, firstSeenAt,
+    // firstEventName, firstEventDate, firstStatus }. When
+    // sameUser=false, firstEventName is deliberately blank so we
+    // don't leak another member's event attribution; the UI shows
+    // a generic "another member has submitted this image" hint and
+    // lets the caller decide whether to proceed.
+    checkPosterDuplicate: function (sha256Hex) {
+      return apiRequest(
+        "GET",
+        "/achievements/check-poster?sha=" + encodeURIComponent(sha256Hex)
+      );
+    },
+    // v1.29.0 - Verifier bulk-approve. Takes an array of pending
+    // achievement ids (cap 25), runs them through the single-row
+    // approval logic in one transaction. Returns { approved,
+    // skipped[{id, reason}], approvedIds } so the queue UI can
+    // refresh only the affected rows. Rejections are deliberately
+    // NOT bulked - each reject wants a human-picked template.
+    bulkVerifyAchievements: function (ids) {
+      return apiRequest("POST", "/achievements/bulk-verify", { ids: ids });
+    },
     // Verifier-only. Backfills the event_date on an already-verified row
     // without touching status/points. Used by the "Missing dates" queue
     // where legacy approvals are brought up to the new season rules.

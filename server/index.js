@@ -3779,6 +3779,14 @@ function mapAchievement(r, opts) {
     // "Challonge" to "Challonge-verified placement".
     placementVerified: !!r.placement_verified,
     verifiedIgn: r.verified_ign || "",
+    // v1.28.0 — id of the earlier achievement that shares this row's
+    // poster_sha256 at ingest time. '' for the common case (fresh
+    // poster). Verifier queue surfaces this as a "Duplicate poster of
+    // <event>" badge so reviewers can compare two claims side by side
+    // before approving the later one. We never reject on duplicate —
+    // co-hosted events legitimately share podium shots — so the flag
+    // is advisory, not a block.
+    duplicateOf: r.duplicate_of || "",
     hasPoster: !!(posterUrl || posterLegacy),
     status: r.status,
     verifierNote: r.verifier_note,
@@ -3911,10 +3919,11 @@ function mapIdFlag(r, opts) {
 
 app.get("/api/achievements", requireAuth, (req, res) => {
   const role = req.user.role;
+  const isStaff = role === "verifier" || role === "admin";
   let rows;
   // The JOIN surfaces the blader IGN so the verifier/admin UI can render
   // member names with the club-tag prefix instead of raw usernames.
-  if (role === "verifier" || role === "admin") {
+  if (isStaff) {
     rows = db
       .prepare(
         `SELECT a.*, u.ign AS user_ign
@@ -3934,7 +3943,112 @@ app.get("/api/achievements", requireAuth, (req, res) => {
       )
       .all(req.user.username);
   }
-  ok(res, { achievements: rows.map((r) => mapAchievement(r, { lite: true })) });
+
+  // v1.28.0 — for the verifier queue ONLY, hydrate each row with the
+  // latest cached Challonge snapshot (tournament name, participant
+  // count, end date, state) so the UI can render a side-by-side
+  // "Challonge says" box next to the poster thumbnail. Members never
+  // see this hydration (they already know their own event).
+  //
+  // We batch: one SELECT over all unique SHAs instead of a subquery
+  // per row, because busy verifier sessions regularly pull ~100 rows
+  // at once and per-row lookups would amplify noticeably.
+  let challongeByUrlSha = Object.create(null);
+  if (isStaff) {
+    const urls = Array.from(
+      new Set(
+        rows
+          .map((r) => (r.challonge_url || "").trim())
+          .filter((u) => u)
+      )
+    );
+    if (urls.length) {
+      const shaList = urls
+        .map((u) => {
+          const p = challonge.parseUrl(u);
+          return p.error ? null : { url: u, sha: challonge.hashUrl(p.canonical) };
+        })
+        .filter(Boolean);
+      if (shaList.length) {
+        const placeholders = shaList.map(() => "?").join(",");
+        const snaps = db
+          .prepare(
+            `SELECT url_sha256, tournament_name, participants_count,
+                    completed_at_iso, state, fetched_at
+               FROM challonge_cache
+              WHERE url_sha256 IN (${placeholders})`
+          )
+          .all(...shaList.map((x) => x.sha));
+        const bySha = Object.create(null);
+        for (const s of snaps) bySha[s.url_sha256] = s;
+        for (const x of shaList) {
+          const snap = bySha[x.sha];
+          if (snap) challongeByUrlSha[x.url] = snap;
+        }
+      }
+    }
+  }
+
+  const mapped = rows.map((r) => {
+    const base = mapAchievement(r, { lite: true });
+    if (isStaff) {
+      const snap = challongeByUrlSha[(r.challonge_url || "").trim()];
+      if (snap) {
+        base.challongeSnapshot = {
+          tournamentName: snap.tournament_name || "",
+          participantsCount: Number(snap.participants_count) || 0,
+          completedAtIso: snap.completed_at_iso || "",
+          state: snap.state || "",
+          fetchedAt: Number(snap.fetched_at) || 0,
+        };
+      }
+    }
+    return base;
+  });
+  ok(res, { achievements: mapped });
+});
+
+// v1.29.0 — Submit-time duplicate-poster check. Called from the
+// dashboard after the member picks a file but BEFORE they press
+// Submit, so the UI can warn them ("this image was submitted before
+// — is this a different event?") while they can still change their
+// mind. Compared to the ingest-time duplicate_of stamp, this endpoint:
+//   - disclose nothing about other members. If the matching row
+//     belongs to someone else we say "another member" and give an
+//     anonymized event name + date so the caller can assess whether
+//     it's the same real-world event. No username is returned.
+//   - if the match is the caller's OWN prior submission, we say so
+//     (and return the event name verbatim, since that's their data).
+//   - only matches on rows that still exist and aren't rejected.
+//     Rejected rows shouldn't guilt-trip a re-submission.
+// Must be registered BEFORE the "/api/achievements/:id" route or
+// Express will match "check-poster" as an id and 404.
+app.get("/api/achievements/check-poster", requireAuth, (req, res) => {
+  const sha = String((req.query && req.query.sha) || "").trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(sha)) {
+    return fail(res, 400, "sha must be a 64-char hex SHA-256 digest.");
+  }
+  const prior = db
+    .prepare(
+      `SELECT id, username, event_name, event_date, created_at, status
+         FROM achievements
+        WHERE poster_sha256 = ? AND status <> 'rejected'
+        ORDER BY created_at ASC
+        LIMIT 1`
+    )
+    .get(sha);
+  if (!prior) {
+    return ok(res, { duplicate: false });
+  }
+  const sameUser = prior.username === req.user.username;
+  ok(res, {
+    duplicate: true,
+    sameUser,
+    firstSeenAt: Number(prior.created_at) || 0,
+    firstEventName: sameUser ? prior.event_name : "",
+    firstEventDate: prior.event_date || "",
+    firstStatus: prior.status || "",
+  });
 });
 
 // Single-record fetch. Returns the full poster data URL so the client can
@@ -4077,6 +4191,25 @@ app.post("/api/achievements", requireAuth, (req, res) => {
     return fail(res, 400, "Player count is required (2–4096).");
   }
 
+  // v1.28.0 — Path C: after deciding not to pursue the Challonge API
+  // route (single-key model doesn't fit the TO-privacy landscape of our
+  // community's brackets), the poster becomes the authoritative
+  // artefact for top-3 placement claims. Require it for
+  // champ / 2nd / 3rd where the fraud payoff is largest. Podium
+  // (>=4th) and swiss_king stay poster-optional so casual submissions
+  // aren't slapped with a new error. We check the *incoming* data URL
+  // (not the post-blob sha) so no-poster submissions are rejected
+  // without touching the blob store.
+  const topThreeRank =
+    rankCode === "champ" || rankCode === "2nd" || rankCode === "3rd";
+  if (topThreeRank && !posterDataUrl) {
+    return fail(
+      res,
+      400,
+      "A photo of the bracket/podium is required for 1st, 2nd, and 3rd-place submissions. Upload a clear screenshot of your finish."
+    );
+  }
+
   const rankPoints = computeAchievementPoints(
     rankCode,
     placement,
@@ -4108,6 +4241,27 @@ app.post("/api/achievements", requireAuth, (req, res) => {
   const posterBlob = blobStore.putBlobFromDataUrl(posterDataUrl);
   const posterSha256 = posterBlob ? posterBlob.sha256 : "";
   const posterDataUrlStored = posterBlob ? "" : posterDataUrl;
+
+  // v1.28.0 — duplicate-poster detection. If another achievement (any
+  // user, any status) already has this exact poster_sha256, record
+  // that prior row's id in duplicate_of. We don't reject — legitimate
+  // co-hosted events reuse podium shots, and false-positive rejections
+  // are worse than a verifier glance — but the verifier queue surfaces
+  // the badge so reviewers can compare the two side by side before
+  // approving the later one. Indexed via idx_achievements_poster_sha256
+  // (migration 0015) so this stays O(log n) at scale.
+  let duplicateOf = "";
+  if (posterSha256) {
+    const prior = db
+      .prepare(
+        `SELECT id FROM achievements
+          WHERE poster_sha256 = ?
+          ORDER BY created_at ASC
+          LIMIT 1`
+      )
+      .get(posterSha256);
+    if (prior && prior.id) duplicateOf = prior.id;
+  }
 
   // v1.26.0 — stamp source='challonge' only if:
   //   1. the URL is a syntactically valid Challonge link, AND
@@ -4196,6 +4350,7 @@ app.post("/api/achievements", requireAuth, (req, res) => {
     source,
     placement_verified: placementVerified,
     verified_ign: verifiedIgn,
+    duplicate_of: duplicateOf,
     status: "pending",
     verifier_note: "",
     created_at: Date.now(),
@@ -4206,11 +4361,12 @@ app.post("/api/achievements", requireAuth, (req, res) => {
     `INSERT INTO achievements (
       id, username, event_name, event_date, rank, rank_code, placement, player_count,
       rank_points, challonge_url, poster_data_url, poster_sha256, game, source,
-      placement_verified, verified_ign, status, verifier_note,
+      placement_verified, verified_ign, duplicate_of, status, verifier_note,
       created_at, verified_at, verified_by
     ) VALUES (@id, @username, @event_name, @event_date, @rank, @rank_code, @placement,
               @player_count, @rank_points, @challonge_url, @poster_data_url, @poster_sha256,
-              @game, @source, @placement_verified, @verified_ign, @status, @verifier_note,
+              @game, @source, @placement_verified, @verified_ign, @duplicate_of,
+              @status, @verifier_note,
               @created_at, @verified_at, @verified_by)`
   ).run(row);
   notifyStaff(
@@ -4373,6 +4529,139 @@ app.patch("/api/achievements/:id", requireRole("verifier"), (req, res) => {
 
   const updated = db.prepare(`SELECT * FROM achievements WHERE id = ?`).get(id);
   ok(res, { achievement: mapAchievement(updated) });
+});
+
+// v1.29.0 — Verifier bulk-approve. For rows that carry strong signal
+// (Challonge URL cached, no duplicate_of stamp, poster present,
+// event_date populated), clicking Approve on every row individually
+// is pure friction. This endpoint runs each id through the same
+// single-row approval path inside one transaction so either they all
+// land or none do. Hard cap at 25 per call so a typo doesn't nuke
+// the queue; the verifier UI batches checkboxes and calls us once.
+//
+// Deliberately NOT a bulk-reject: rejections need a reason note per
+// row (which verifiers should think about individually), they carry
+// a rejection-template pick, and a bulk reject would amplify the
+// blast radius of a misclick. Rejections stay single-row.
+const BULK_VERIFY_MAX = 25;
+app.post("/api/achievements/bulk-verify", requireRole("verifier"), (req, res) => {
+  const ids = Array.isArray(req.body && req.body.ids) ? req.body.ids : null;
+  if (!ids || !ids.length) {
+    return fail(res, 400, "ids[] is required.");
+  }
+  if (ids.length > BULK_VERIFY_MAX) {
+    return fail(
+      res,
+      400,
+      "Bulk verify is capped at " + BULK_VERIFY_MAX + " rows per call."
+    );
+  }
+  const cleanIds = ids
+    .map((x) => String(x || "").trim())
+    .filter((x) => /^ach_[a-zA-Z0-9_-]+$/.test(x));
+  if (cleanIds.length !== ids.length) {
+    return fail(res, 400, "One or more ids are malformed.");
+  }
+
+  const placeholders = cleanIds.map(() => "?").join(",");
+  const rows = db
+    .prepare(
+      `SELECT * FROM achievements
+        WHERE id IN (${placeholders}) AND status = 'pending'`
+    )
+    .all(...cleanIds);
+  if (!rows.length) {
+    return fail(res, 404, "No pending rows matched those ids.");
+  }
+
+  const nowTs = Date.now();
+  const results = { approved: [], skipped: [] };
+
+  const tx = db.transaction(() => {
+    for (const existing of rows) {
+      // Verifier cannot self-approve, same rule as the single-row PATCH.
+      if (existing.username === req.user.username) {
+        results.skipped.push({ id: existing.id, reason: "own-submission" });
+        continue;
+      }
+      // Must carry a usable event_date to score cleanly; the UI is
+      // already expected to filter these, but a defensive check keeps
+      // the batch robust against a verifier hand-editing the payload.
+      if (!existing.event_date) {
+        results.skipped.push({ id: existing.id, reason: "missing-event-date" });
+        continue;
+      }
+
+      const canonicalPoints = existing.rank_code
+        ? computeAchievementPoints(
+            existing.rank_code,
+            existing.placement,
+            existing.player_count,
+            existing.game
+          )
+        : LEGACY_RANK_POINTS[existing.rank] || 0;
+
+      db.prepare(
+        `UPDATE achievements
+            SET status = 'verified', rank_points = ?, verifier_note = 'Approved (bulk)',
+                verified_at = ?, verified_by = ?
+          WHERE id = ? AND status = 'pending'`
+      ).run(canonicalPoints, nowTs, req.user.username, existing.id);
+      if (canonicalPoints) {
+        db.prepare(
+          `UPDATE users SET points = points + ? WHERE username = ?`
+        ).run(canonicalPoints, existing.username);
+      }
+      results.approved.push({
+        id: existing.id,
+        member: existing.username,
+        points: canonicalPoints,
+      });
+    }
+  });
+  tx();
+
+  if (results.approved.length) bumpLeaderboardVersion();
+
+  // Single audit log summarising the batch (plus per-row entries so
+  // the per-member trail stays intact).
+  auditLog(
+    req.user.username,
+    "achievement.bulk_verify",
+    "batch_" + nowTs,
+    {
+      approved: results.approved.length,
+      skipped: results.skipped.length,
+      members: Array.from(new Set(results.approved.map((a) => a.member))),
+    },
+    req.clientIp
+  );
+  for (const a of results.approved) {
+    auditLog(
+      req.user.username,
+      "achievement.verified",
+      a.id,
+      { member: a.member, points: a.points, via: "bulk" },
+      req.clientIp
+    );
+    notify(
+      a.member,
+      "achievement",
+      "Achievement approved",
+      'Your result was verified by ' +
+        req.user.username +
+        ". +" +
+        a.points +
+        " pts.",
+      "dashboard.html"
+    );
+  }
+
+  ok(res, {
+    approved: results.approved.length,
+    skipped: results.skipped,
+    approvedIds: results.approved.map((a) => a.id),
+  });
 });
 
 // Backfill the event_date on an already-verified achievement. Exists because

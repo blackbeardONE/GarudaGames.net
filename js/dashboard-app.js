@@ -1628,10 +1628,39 @@
           });
       }
       if (posterFile) {
-        status.textContent = "Compressing poster…";
+        status.textContent = "Compressing poster\u2026";
         window.GarudaImageUtils
           .compressImageFile(posterFile, { maxSide: 1000, quality: 0.7 })
-          .then(submit)
+          .then(function (posterDataUrl) {
+            // v1.29.0 - compute SHA-256 of the decoded bytes (what the
+            // server will store) and check for a prior upload. The
+            // server never blocks on duplicate; we just pause and ask
+            // the member to confirm so they can catch a copy-paste
+            // mistake (same screenshot they already submitted, or
+            // someone else's winning shot they pulled from Discord).
+            status.textContent = "Checking poster\u2026";
+            return sha256HexOfDataUrl(posterDataUrl).then(function (sha) {
+              return window.GarudaApi
+                .checkPosterDuplicate(sha)
+                .catch(function () {
+                  // Network blip on the check must not block submission.
+                  return { duplicate: false };
+                })
+                .then(function (check) {
+                  if (check && check.duplicate) {
+                    var proceed = window.confirm(
+                      formatDupeConfirm(check)
+                    );
+                    if (!proceed) {
+                      status.textContent =
+                        "Cancelled. Pick a different poster or adjust the event details.";
+                      return;
+                    }
+                  }
+                  submit(posterDataUrl);
+                });
+            });
+          })
           .catch(function () {
             status.textContent = "Poster upload failed.";
           });
@@ -1639,6 +1668,60 @@
         submit("");
       }
     });
+  }
+
+  // v1.29.0 - SHA-256 of the decoded bytes of a "data:image/...;base64,..."
+  // URL, matching server/blob-store.js (which hashes the post-decode
+  // buffer, not the base64 string). Returns a 64-char lowercase hex
+  // digest. Web Crypto is available on every supported browser.
+  function sha256HexOfDataUrl(dataUrl) {
+    var idx = dataUrl.indexOf(",");
+    var b64 = idx >= 0 ? dataUrl.slice(idx + 1) : dataUrl;
+    var bin = window.atob(b64);
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return window.crypto.subtle
+      .digest("SHA-256", bytes)
+      .then(function (buf) {
+        var arr = new Uint8Array(buf);
+        var hex = "";
+        for (var j = 0; j < arr.length; j++) {
+          hex += (arr[j] < 16 ? "0" : "") + arr[j].toString(16);
+        }
+        return hex;
+      });
+  }
+
+  // Build the confirm dialog text. PII rule: for sameUser matches we
+  // surface the prior event name; for other-member matches we say
+  // "another member" and never reveal the other member's username or
+  // event name. The date is shown in both cases because it's useful
+  // context and not PII.
+  function formatDupeConfirm(check) {
+    var when = check.firstEventDate || "";
+    var statusBit = "";
+    if (check.firstStatus === "verified") statusBit = " (already verified)";
+    else if (check.firstStatus === "pending") statusBit = " (still pending review)";
+    if (check.sameUser) {
+      return (
+        "You've already uploaded this exact image" +
+        (check.firstEventName
+          ? " for \u201c" + check.firstEventName + "\u201d"
+          : "") +
+        (when ? " on " + when : "") +
+        statusBit +
+        ".\n\nSubmit a new achievement with the same screenshot anyway? " +
+        "(Cancel lets you pick a different image.)"
+      );
+    }
+    return (
+      "Another member has already uploaded this exact image" +
+      (when ? " (event date " + when + ")" : "") +
+      statusBit +
+      ".\n\nIf this is a different event you both attended, it's fine " +
+      "to continue \u2014 but a verifier will compare the two submissions. " +
+      "Continue anyway?"
+    );
   }
 
   function bindJlapForm() {
@@ -1814,6 +1897,12 @@
           note: r.verifierNote || "—",
           appealStatus: r.appealStatus || "",
           appealVerifierNote: r.appealVerifierNote || "",
+          // v1.29.0 - hook for the "View my poster" self-view link.
+          // posterUrl is the /api/blob/<sha> reference served with
+          // owner-always-allowed auth, so members can preview their
+          // own uploaded screenshot without waiting for verification.
+          posterUrl: r.posterUrl || "",
+          posterDataUrl: r.posterDataUrl || "",
           when: r.createdAt
         });
       });
@@ -1872,11 +1961,29 @@
     for (var i = 0; i < rows.length; i++) {
       var r = rows[i];
       var tr2 = document.createElement("tr");
+      // v1.29.0 - self-view poster link for achievement rows that
+      // carry a blob. Rendered as a small inline "View poster" tag
+      // appended to the detail cell so members can sanity-check the
+      // image that's attached to a pending or verified submission.
+      // JLAP rows don't get this (they have their own certificate
+      // flow) nor do id-flag history rows. The link opens in a new
+      // tab; the browser session's cookie carries auth so
+      // /api/blob/<sha> will serve for the owner.
+      var detailHtml = escapeHtml(r.detail);
+      if (r.appealKind === "achievement" && (r.posterUrl || r.posterDataUrl)) {
+        var posterHref = r.posterUrl
+          ? escapeHtml(r.posterUrl)
+          : escapeHtml(r.posterDataUrl);
+        detailHtml +=
+          ' &middot; <a class="dash-poster-link" target="_blank" rel="noopener" href="' +
+          posterHref +
+          '">View poster</a>';
+      }
       tr2.innerHTML =
         "<td>" +
         escapeHtml(r.kind) +
         "</td><td>" +
-        escapeHtml(r.detail) +
+        detailHtml +
         '</td><td><span class="dash-status ' +
         statusClass(r.status) +
         '">' +
